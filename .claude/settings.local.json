@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(go mod:*)",
+      "Bash(go build:*)",
+      "Bash(flutter pub:*)",
+      "Bash(flutter analyze:*)"
+    ],
+    "additionalDirectories": [
+      "C:\\data_dave\\work\\alone\\david\\shareliveloc\\shareliveloc-api"
+    ]
+  }
+}
