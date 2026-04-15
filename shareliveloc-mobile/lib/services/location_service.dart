@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:ui';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 
@@ -56,7 +58,8 @@ class LocationService {
     );
     await flnp
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(androidChannel);
 
     await service.configure(
@@ -64,6 +67,7 @@ class LocationService {
         onStart: _onServiceStart,
         autoStart: false,
         isForegroundMode: true,
+        autoStartOnBoot: true,
         notificationChannelId: _notificationChannelId,
         initialNotificationTitle: 'ShareLiveLoc',
         initialNotificationContent: 'Berbagi lokasi aktif',
@@ -87,6 +91,20 @@ class LocationService {
       if (permission == LocationPermission.denied) return false;
     }
     if (permission == LocationPermission.deniedForever) return false;
+
+    // Android 13+ needs notification permission for foreground service
+    if (Platform.isAndroid) {
+      final notifStatus = await Permission.notification.status;
+      if (!notifStatus.isGranted) {
+        await Permission.notification.request();
+      }
+
+      // Request disable battery optimization for reliable background tracking
+      final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
+      if (!batteryStatus.isGranted) {
+        await Permission.ignoreBatteryOptimizations.request();
+      }
+    }
 
     return true;
   }
@@ -116,8 +134,9 @@ class LocationService {
     await prefs.setString(_prefGroupName, groupName);
     await prefs.setString(_prefIcon, icon);
     await prefs.setInt(_prefDuration, durationHours);
-    if (_expiresAt != null) {
-      await prefs.setInt(_prefExpiresAt, _expiresAt!.millisecondsSinceEpoch);
+    if (durationHours > 0) {
+      final expiresAt = DateTime.now().add(Duration(hours: durationHours));
+      await prefs.setInt(_prefExpiresAt, expiresAt.millisecondsSinceEpoch);
     }
   }
 
@@ -145,17 +164,25 @@ class LocationService {
     DateTime? expiresAt;
     if (expiresAtMs != null) {
       expiresAt = DateTime.fromMillisecondsSinceEpoch(expiresAtMs);
-      // Already expired
       if (expiresAt.isBefore(DateTime.now())) {
         await clearSession();
         return null;
       }
     }
 
-    // Restore in-memory state
     _activeShareId = shareId;
     _isTracking = true;
     _expiresAt = expiresAt;
+
+    // Restart background service if not running
+    final service = FlutterBackgroundService();
+    if (!await service.isRunning()) {
+      await service.startService();
+      for (int i = 0; i < 30; i++) {
+        if (await service.isRunning()) break;
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+    }
 
     return ShareSession(
       shareId: shareId,
@@ -177,12 +204,13 @@ class LocationService {
     }
 
     final service = FlutterBackgroundService();
-    await service.startService();
 
-    service.invoke('startTracking', {
-      'shareId': shareId,
-      'durationHours': durationHours,
-    });
+    // Start service and wait until it's running
+    await service.startService();
+    for (int i = 0; i < 30; i++) {
+      if (await service.isRunning()) break;
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
 
     service.on('expired').listen((_) {
       _isTracking = false;
@@ -211,68 +239,104 @@ class LocationService {
 @pragma('vm:entry-point')
 Future<void> _onServiceStart(ServiceInstance service) async {
   DartPluginRegistrant.ensureInitialized();
+  print('[ShareLiveLoc] Service started');
 
   StreamSubscription<Position>? positionSub;
   Timer? expiryTimer;
   int? shareId;
 
-  service.on('startTracking').listen((data) async {
-    if (data == null) return;
-    shareId = data['shareId'] as int;
-    final durationHours = data['durationHours'] as int;
+  // Read session from SharedPreferences directly
+  final prefs = await SharedPreferences.getInstance();
+  shareId = prefs.getInt(_prefShareId);
+  print('[ShareLiveLoc] shareId from prefs: $shareId');
 
+  if (shareId == null) {
+    print('[ShareLiveLoc] No session found, stopping service');
+    if (service is AndroidServiceInstance) {
+      await service.stopSelf();
+    }
+    return;
+  }
+
+  final durationHours = prefs.getInt(_prefDuration) ?? 0;
+  final expiresAtMs = prefs.getInt(_prefExpiresAt);
+
+  Future<void> clearPrefs() async {
+    await prefs.remove(_prefShareId);
+    await prefs.remove(_prefName);
+    await prefs.remove(_prefGroupName);
+    await prefs.remove(_prefIcon);
+    await prefs.remove(_prefDuration);
+    await prefs.remove(_prefExpiresAt);
+  }
+
+  Future<void> stopAndExit() async {
+    positionSub?.cancel();
     expiryTimer?.cancel();
-    if (durationHours > 0) {
-      expiryTimer = Timer(Duration(hours: durationHours), () async {
-        positionSub?.cancel();
-        await ApiService.stopShare(shareId!);
-        service.invoke('expired');
+    await ApiService.stopShare(shareId!);
+    await clearPrefs();
+    service.invoke('expired');
+    if (service is AndroidServiceInstance) {
+      await service.stopSelf();
+    }
+  }
 
-        if (service is AndroidServiceInstance) {
-          await service.stopSelf();
-        }
-      });
+  // Check if already expired
+  if (expiresAtMs != null) {
+    final expiresAt = DateTime.fromMillisecondsSinceEpoch(expiresAtMs);
+    if (expiresAt.isBefore(DateTime.now())) {
+      await stopAndExit();
+      return;
     }
 
-    // Send initial position immediately
-    try {
-      final pos = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.high,
-        ),
-      );
-      if (shareId != null) {
-        ApiService.updateLocation(shareId!, pos.latitude, pos.longitude);
-      }
-    } catch (_) {}
+    final remaining = expiresAt.difference(DateTime.now());
+    expiryTimer = Timer(remaining, () => stopAndExit());
+  } else if (durationHours > 0) {
+    expiryTimer = Timer(Duration(hours: durationHours), () => stopAndExit());
+  }
 
-    const locationSettings = LocationSettings(
-      accuracy: LocationAccuracy.high,
-      distanceFilter: 5,
+  // Send initial position immediately
+  try {
+    print('[ShareLiveLoc] Getting initial position...');
+    final pos = await Geolocator.getCurrentPosition(
+      locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
+    print('[ShareLiveLoc] Initial position: ${pos.latitude}, ${pos.longitude}');
+    await ApiService.updateLocation(shareId, pos.latitude, pos.longitude);
+  } catch (e) {
+    print('[ShareLiveLoc] Error getting initial position: $e');
+  }
 
-    positionSub?.cancel();
-    positionSub = Geolocator.getPositionStream(
-      locationSettings: locationSettings,
-    ).listen((Position position) {
-      if (shareId != null) {
-        ApiService.updateLocation(
-          shareId!,
-          position.latitude,
-          position.longitude,
-        );
+  // Start continuous GPS stream
+  const locationSettings = LocationSettings(
+    accuracy: LocationAccuracy.high,
+    distanceFilter: 5,
+  );
 
-        if (service is AndroidServiceInstance) {
-          service.setForegroundNotificationInfo(
-            title: 'ShareLiveLoc',
-            content:
-                'Berbagi lokasi aktif (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})',
+  print('[ShareLiveLoc] Starting GPS stream...');
+  positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
+      .listen((Position position) {
+        if (shareId != null) {
+          print(
+            '[ShareLiveLoc] Position update: ${position.latitude}, ${position.longitude}',
           );
-        }
-      }
-    });
-  });
+          ApiService.updateLocation(
+            shareId,
+            position.latitude,
+            position.longitude,
+          );
 
+          if (service is AndroidServiceInstance) {
+            service.setForegroundNotificationInfo(
+              title: 'ShareLiveLoc',
+              content:
+                  'Berbagi lokasi aktif (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})',
+            );
+          }
+        }
+      });
+
+  // Listen for stop command from UI
   service.on('stopTracking').listen((_) async {
     expiryTimer?.cancel();
     await positionSub?.cancel();

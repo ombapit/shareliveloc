@@ -31,6 +31,12 @@ type Share struct {
 	UpdatedAt     time.Time  `json:"updated_at"`
 }
 
+type AppConfig struct {
+	ID    uint   `json:"id" gorm:"primaryKey"`
+	Key   string `json:"key" gorm:"uniqueIndex;not null"`
+	Value string `json:"value" gorm:"not null"`
+}
+
 var DB *gorm.DB
 
 func getEnv(key, fallback string) string {
@@ -56,9 +62,20 @@ func InitDB() {
 		panic("failed to connect database: " + err.Error())
 	}
 
-	DB.AutoMigrate(&Group{}, &Share{})
+	DB.AutoMigrate(&Group{}, &Share{}, &AppConfig{})
 
-	dropRemovedColumns(&Group{}, &Share{})
+	dropRemovedColumns(&Group{}, &Share{}, &AppConfig{})
+
+	// Seed default configs
+	var count int64
+	DB.Model(&AppConfig{}).Count(&count)
+	if count == 0 {
+		configs := []AppConfig{
+			{Key: "ads_enabled", Value: "false"},
+			{Key: "ads_banner_id", Value: "ca-app-pub-3940256099942544/6300978111"},
+		}
+		DB.Create(&configs)
+	}
 }
 
 func dropRemovedColumns(models ...interface{}) {

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/help_screen.dart';
 import 'screens/share_screen.dart';
 import 'services/location_service.dart';
 
@@ -39,6 +40,7 @@ class _MainScreenState extends State<MainScreen> {
   final _screens = const [
     DashboardScreen(),
     ShareScreen(),
+    HelpScreen(),
   ];
 
   @override
@@ -63,6 +65,11 @@ class _MainScreenState extends State<MainScreen> {
             icon: Icon(Icons.share_location_outlined),
             selectedIcon: Icon(Icons.share_location),
             label: 'Share',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.help_outline),
+            selectedIcon: Icon(Icons.help),
+            label: 'Bantuan',
           ),
         ],
       ),

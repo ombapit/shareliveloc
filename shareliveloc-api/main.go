@@ -30,6 +30,9 @@ func main() {
 		api.PUT("/shares/:id/location", handlers.UpdateLocation)
 		api.PUT("/shares/:id/stop", handlers.StopShare)
 		api.GET("/shares", handlers.GetShares)
+
+		api.GET("/config", handlers.GetConfigs)
+		api.GET("/config/:key", handlers.GetConfig)
 	}
 
 	r.GET("/ws/location/:group_id", handlers.HandleWebSocket)

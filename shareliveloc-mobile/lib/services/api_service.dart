@@ -73,4 +73,18 @@ class ApiService {
     }
     return [];
   }
+
+  static Future<Map<String, String>> getConfigs() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConfig.baseUrl}/api/config'),
+      );
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final data = body['data'] as Map<String, dynamic>;
+        return data.map((k, v) => MapEntry(k, v.toString()));
+      }
+    } catch (_) {}
+    return {};
+  }
 }

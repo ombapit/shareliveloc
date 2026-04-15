@@ -143,9 +143,11 @@ class _GroupSearchFieldState extends State<GroupSearchField> {
           ),
           onChanged: _onSearchChanged,
           onTap: () {
-            if (_groups.isNotEmpty) {
-              setState(() => _showDropdown = true);
-            }
+            _loadInitialGroups().then((_) {
+              if (_groups.isNotEmpty) {
+                setState(() => _showDropdown = true);
+              }
+            });
           },
         ),
         if (_showDropdown && _groups.isNotEmpty)

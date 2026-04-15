@@ -1,0 +1,6 @@
+tmp/
+*.exe
+*.db
+.env
+air.log
+shareliveloc-api

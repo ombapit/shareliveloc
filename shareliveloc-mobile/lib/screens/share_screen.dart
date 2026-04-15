@@ -55,27 +55,7 @@ class _ShareScreenState extends State<ShareScreen> {
       if (session.durationHours > 0 && session.expiresAt != null) {
         _startCountdown();
       }
-      // Re-listen for expired event from background service
-      LocationService.onExpired = () {
-        if (mounted) {
-          setState(() {
-            _isSharing = false;
-            _countdownTimer?.cancel();
-            _nameController.clear();
-            _groupName = '';
-            _groupFieldKey = UniqueKey();
-            _selectedIcon = 'bus';
-            _selectedCategory = 'Transportasi Umum';
-            _selectedDuration = 1;
-          });
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Waktu berbagi lokasi telah habis'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      };
+      LocationService.onExpired = _onExpired;
     }
   }
 
@@ -101,14 +81,33 @@ class _ShareScreenState extends State<ShareScreen> {
     final now = DateTime.now();
     if (now.isAfter(expiresAt)) {
       _countdownTimer?.cancel();
-      if (mounted) {
-        setState(() => _remaining = Duration.zero);
-      }
+      _onExpired();
       return;
     }
     if (mounted) {
       setState(() => _remaining = expiresAt.difference(now));
     }
+  }
+
+  void _onExpired() {
+    if (!mounted) return;
+    _countdownTimer?.cancel();
+    LocationService.onExpired = null;
+    setState(() {
+      _isSharing = false;
+      _nameController.clear();
+      _groupName = '';
+      _groupFieldKey = UniqueKey();
+      _selectedIcon = 'bus';
+      _selectedCategory = 'Transportasi Umum';
+      _selectedDuration = 1;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Waktu berbagi lokasi telah habis'),
+        backgroundColor: Colors.orange,
+      ),
+    );
   }
 
   String _formatDuration(Duration d) {
@@ -154,27 +153,7 @@ class _ShareScreenState extends State<ShareScreen> {
       );
 
       if (shareId != null) {
-        LocationService.onExpired = () {
-          if (mounted) {
-            setState(() {
-              _isSharing = false;
-              _countdownTimer?.cancel();
-              _nameController.clear();
-              _groupName = '';
-              _groupFieldKey = UniqueKey();
-              _selectedIcon = 'bus';
-              _selectedCategory = 'Transportasi Umum';
-              _selectedDuration = 1;
-            });
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Waktu berbagi lokasi telah habis'),
-                backgroundColor: Colors.orange,
-              ),
-            );
-          }
-        };
-        await LocationService.startTracking(shareId, _selectedDuration);
+        LocationService.onExpired = _onExpired;
         await LocationService.saveSession(
           shareId: shareId,
           name: _nameController.text.trim(),
@@ -182,6 +161,7 @@ class _ShareScreenState extends State<ShareScreen> {
           icon: _selectedIcon,
           durationHours: _selectedDuration,
         );
+        await LocationService.startTracking(shareId, _selectedDuration);
         if (mounted) {
           setState(() {
             _isSharing = true;

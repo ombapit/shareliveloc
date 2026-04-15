@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/group.dart';
 import '../models/share.dart';
@@ -23,11 +24,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Group? _selectedGroup;
   bool _isLoading = false;
 
+  // Ads
+  BannerAd? _bannerAd;
+  bool _isAdLoaded = false;
+  bool _adsEnabled = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAdConfig();
+  }
+
   @override
   void dispose() {
     _wsService.disconnect();
     _mapController.dispose();
+    _bannerAd?.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAdConfig() async {
+    try {
+      final configs = await ApiService.getConfigs();
+      final adsEnabled = configs['ads_enabled'] == 'true';
+      final bannerId = configs['ads_banner_id'] ?? '';
+
+      if (adsEnabled && bannerId.isNotEmpty && mounted) {
+        setState(() => _adsEnabled = true);
+        await MobileAds.instance.initialize();
+        _loadBannerAd(bannerId);
+      }
+    } catch (_) {}
+  }
+
+  void _loadBannerAd(String adUnitId) {
+    _bannerAd = BannerAd(
+      adUnitId: adUnitId,
+      size: AdSize.banner,
+      request: const AdRequest(),
+      listener: BannerAdListener(
+        onAdLoaded: (_) {
+          if (mounted) setState(() => _isAdLoaded = true);
+        },
+        onAdFailedToLoad: (ad, error) {
+          ad.dispose();
+          if (mounted) setState(() => _isAdLoaded = false);
+        },
+      ),
+    )..load();
   }
 
   void _onGroupSelected(Group group) {
@@ -94,9 +138,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _fitBounds() {
-    final validShares = _shares
-        .where((s) => s.latitude != 0 && s.longitude != 0)
-        .toList();
+    final validShares =
+        _shares.where((s) => s.latitude != 0 && s.longitude != 0).toList();
     if (validShares.isEmpty) {
       _centerOnUser();
       return;
@@ -161,7 +204,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const Center(child: CircularProgressIndicator()),
                 Positioned(
                   right: 16,
-                  bottom: 16,
+                  bottom: (_adsEnabled && _isAdLoaded) ? 66 : 16,
                   child: FloatingActionButton.small(
                     heroTag: 'centerBtn',
                     onPressed: _centerOnUser,
@@ -171,6 +214,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           ),
+          if (_adsEnabled && _isAdLoaded && _bannerAd != null)
+            SizedBox(
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            ),
         ],
       ),
     );
