@@ -125,7 +125,7 @@ class _GroupSearchFieldState extends State<GroupSearchField> {
           controller: _controller,
           focusNode: _focusNode,
           decoration: InputDecoration(
-            labelText: 'Nama Group',
+            labelText: 'Nama Grup',
             border: const OutlineInputBorder(),
             suffixIcon: _isLoading
                 ? const Padding(
@@ -139,7 +139,7 @@ class _GroupSearchFieldState extends State<GroupSearchField> {
                 : null,
             hintText: _totalGroups != null && _totalGroups! > 5
                 ? 'Ketik minimal 3 huruf...'
-                : 'Ketik atau pilih group',
+                : 'Ketik atau pilih grup',
           ),
           onChanged: _onSearchChanged,
           onTap: () {

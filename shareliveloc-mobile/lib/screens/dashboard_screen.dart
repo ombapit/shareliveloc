@@ -151,8 +151,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _fitBounds() {
     _mapController.rotate(0);
-    final validShares =
-        _shares.where((s) => s.latitude != 0 && s.longitude != 0).toList();
+    final validShares = _shares
+        .where((s) => s.latitude != 0 && s.longitude != 0)
+        .toList();
     if (validShares.isEmpty) {
       _centerOnUser();
       return;
@@ -201,7 +202,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   const Icon(Icons.group, size: 18),
                   const SizedBox(width: 6),
                   Text(
-                    'Group: ${_selectedGroup!.name}',
+                    'Grup: ${_selectedGroup!.name}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                   const Spacer(),
