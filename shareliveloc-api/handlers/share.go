@@ -8,6 +8,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+func formatExpiresAt(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	return t.Format(time.RFC3339)
+}
+
 func CreateShare(c *gin.Context) {
 	var input struct {
 		Name          string `json:"name" binding:"required"`
@@ -49,6 +56,7 @@ func CreateShare(c *gin.Context) {
 		Latitude:      share.Latitude,
 		Longitude:     share.Longitude,
 		DurationHours: share.DurationHours,
+		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
 		IsActive:      true,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
@@ -105,6 +113,7 @@ func UpdateLocation(c *gin.Context) {
 		Latitude:      input.Latitude,
 		Longitude:     input.Longitude,
 		DurationHours: share.DurationHours,
+		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
 		IsActive:      true,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
@@ -128,6 +137,7 @@ func StopShare(c *gin.Context) {
 		Latitude:      share.Latitude,
 		Longitude:     share.Longitude,
 		DurationHours: share.DurationHours,
+		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
 		IsActive:      false,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})

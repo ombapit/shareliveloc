@@ -26,20 +26,23 @@ func StartCleanupJob() {
 }
 
 func cleanupStaleShares() {
-	threshold := time.Now().Add(-staleThreshold)
+	now := time.Now()
+	threshold := now.Add(-staleThreshold)
 
-	var stale []models.Share
+	var candidates []models.Share
+	// Stale (no update in threshold) OR expired (expires_at passed for timed shares)
 	models.DB.
-		Where("is_active = ? AND updated_at < ?", true, threshold).
-		Find(&stale)
+		Where("is_active = ? AND (updated_at < ? OR (duration_hours > 0 AND expires_at < ?))",
+			true, threshold, now).
+		Find(&candidates)
 
-	if len(stale) == 0 {
+	if len(candidates) == 0 {
 		return
 	}
 
-	log.Printf("[cleanup] found %d stale active shares, marking inactive", len(stale))
+	log.Printf("[cleanup] found %d stale/expired active shares, marking inactive", len(candidates))
 
-	for _, share := range stale {
+	for _, share := range candidates {
 		models.DB.Model(&share).Update("is_active", false)
 
 		WsHub.Broadcast(share.GroupID, LocationBroadcast{
@@ -49,6 +52,7 @@ func cleanupStaleShares() {
 			Latitude:      share.Latitude,
 			Longitude:     share.Longitude,
 			DurationHours: share.DurationHours,
+			ExpiresAt:     formatExpiresAt(share.ExpiresAt),
 			IsActive:      false,
 			UpdatedAt:     time.Now().Format(time.RFC3339),
 		})

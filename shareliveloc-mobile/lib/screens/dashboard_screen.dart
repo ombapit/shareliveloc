@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -23,6 +25,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<ShareLocation> _shares = [];
   Group? _selectedGroup;
   bool _isLoading = false;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  Timer? _labelTimer;
+  bool _wasOffline = false;
 
   // Ads
   BannerAd? _bannerAd;
@@ -33,14 +38,54 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void initState() {
     super.initState();
     _loadAdConfig();
+    _listenConnectivity();
+    // Rebuild every 15s to refresh "X minute remaining" labels
+    // and remove expired shares client-side (API cleanup may lag up to 1 min)
+    _labelTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (!mounted) return;
+      final now = DateTime.now();
+      final hasExpired = _shares.any(
+        (s) => s.expiresAt != null && s.expiresAt!.isBefore(now),
+      );
+      if (hasExpired) {
+        setState(() {
+          _shares.removeWhere(
+            (s) => s.expiresAt != null && s.expiresAt!.isBefore(now),
+          );
+        });
+        _fitBounds();
+      } else if (_shares.any((s) => s.expiresAt != null)) {
+        setState(() {});
+      }
+    });
   }
 
   @override
   void dispose() {
     _wsService.disconnect();
+    _connectivitySub?.cancel();
+    _labelTimer?.cancel();
     _mapController.dispose();
     _bannerAd?.dispose();
     super.dispose();
+  }
+
+  void _listenConnectivity() {
+    _connectivitySub =
+        Connectivity().onConnectivityChanged.listen((results) {
+      final hasNetwork = results.any((r) => r != ConnectivityResult.none);
+      if (!hasNetwork) {
+        _wasOffline = true;
+      } else if (_wasOffline) {
+        _wasOffline = false;
+        // Reconnect WebSocket and re-fetch shares to sync state
+        if (_selectedGroup != null) {
+          _wsService.connect(_selectedGroup!.id);
+          _wsService.onMessage = _onWsMessage;
+          _loadShares(_selectedGroup!.id);
+        }
+      }
+    });
   }
 
   Future<void> _loadAdConfig() async {
@@ -119,6 +164,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final name = msg['name'] as String;
         final icon = msg['icon'] as String;
         final durationHours = (msg['duration_hours'] as int?) ?? 0;
+        DateTime? expiresAt;
+        final expStr = msg['expires_at'];
+        if (expStr is String && expStr.isNotEmpty) {
+          expiresAt = DateTime.tryParse(expStr);
+        }
 
         final idx = _shares.indexWhere((s) => s.id == shareId);
         final updated = ShareLocation(
@@ -129,6 +179,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           latitude: lat,
           longitude: lng,
           durationHours: durationHours,
+          expiresAt: expiresAt,
           isActive: true,
         );
         if (idx >= 0) {

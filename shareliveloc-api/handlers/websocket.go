@@ -22,6 +22,7 @@ type LocationBroadcast struct {
 	Latitude      float64 `json:"latitude"`
 	Longitude     float64 `json:"longitude"`
 	DurationHours int     `json:"duration_hours"`
+	ExpiresAt     string  `json:"expires_at"`
 	IsActive      bool    `json:"is_active"`
 	UpdatedAt     string  `json:"updated_at"`
 }

@@ -28,6 +28,24 @@ class MapWidget extends StatelessWidget {
     }
   }
 
+  String? _remainingFor(ShareLocation s) {
+    if (s.expiresAt == null) return null;
+    final diff = s.expiresAt!.difference(DateTime.now());
+    if (diff.isNegative) return null;
+
+    final hours = diff.inHours;
+    final minutes = diff.inMinutes.remainder(60);
+
+    if (hours >= 1) {
+      if (minutes == 0) {
+        return '$hours hour${hours > 1 ? 's' : ''} remaining';
+      }
+      return '$hours hour${hours > 1 ? 's' : ''} $minutes minute${minutes > 1 ? 's' : ''} remaining';
+    }
+    final mins = diff.inMinutes < 1 ? 1 : diff.inMinutes;
+    return '$mins minute${mins > 1 ? 's' : ''} remaining';
+  }
+
   @override
   Widget build(BuildContext context) {
     return FlutterMap(
@@ -44,45 +62,59 @@ class MapWidget extends StatelessWidget {
         MarkerLayer(
           markers: shares
               .where((s) => s.latitude != 0 && s.longitude != 0)
-              .map((s) => Marker(
-                    point: LatLng(s.latitude, s.longitude),
-                    width: 110,
-                    height: 60,
+              .map((s) {
+            final remaining = _remainingFor(s);
+            return Marker(
+              point: LatLng(s.latitude, s.longitude),
+              width: 120,
+              height: remaining != null ? 78 : 60,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    _iconForType(s.icon),
+                    style: const TextStyle(fontSize: 28),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 4, vertical: 1),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      borderRadius: BorderRadius.circular(4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.2),
+                          blurRadius: 2,
+                        ),
+                      ],
+                    ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          _iconForType(s.icon),
-                          style: const TextStyle(fontSize: 28),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 4, vertical: 1),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            borderRadius: BorderRadius.circular(4),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.2),
-                                blurRadius: 2,
-                              ),
-                            ],
+                          s.name,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
                           ),
-                          child: Text(
-                            s.durationHours > 0
-                                ? '${s.name} (${s.durationHours} jam)'
-                                : s.name,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        if (remaining != null)
+                          Text(
+                            remaining,
                             style: const TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 9,
+                              color: Colors.grey,
                             ),
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ),
                       ],
                     ),
-                  ))
-              .toList(),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ),
       ],
     );

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'main_screen.dart';
 
@@ -16,6 +15,8 @@ class _SplashScreenState extends State<SplashScreen>
   late final AnimationController _animController;
   late final Animation<double> _fadeAnim;
   late final Animation<double> _scaleAnim;
+  bool _mandatoryUpdate = false;
+  bool _updateInProgress = false;
 
   @override
   void initState() {
@@ -34,10 +35,15 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _bootstrap() async {
-    final hasUpdate = await _checkForUpdate();
+    final mandatory = await _checkForUpdate();
 
-    // If update is mandatory, don't proceed to main screen
-    if (hasUpdate) return;
+    if (mandatory) {
+      // Never navigate. UI will show mandatory update screen.
+      if (mounted) setState(() => _mandatoryUpdate = true);
+      // Kick off the first attempt automatically
+      _triggerImmediateUpdate();
+      return;
+    }
 
     await Future.delayed(const Duration(milliseconds: 1500));
 
@@ -48,8 +54,7 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  /// Returns true if an update was required (forced), so caller should
-  /// not proceed to main screen.
+  /// Returns true if immediate (mandatory) update is required.
   Future<bool> _checkForUpdate() async {
     if (!Platform.isAndroid) return false;
 
@@ -57,7 +62,6 @@ class _SplashScreenState extends State<SplashScreen>
     try {
       info = await InAppUpdate.checkForUpdate();
     } catch (_) {
-      // Not installed from Play Store or no internet - allow entry
       return false;
     }
 
@@ -65,67 +69,35 @@ class _SplashScreenState extends State<SplashScreen>
       return false;
     }
 
-    if (!info.immediateUpdateAllowed) {
-      // Optional update - start flexible, don't block
-      if (info.flexibleUpdateAllowed) {
-        try {
-          await InAppUpdate.startFlexibleUpdate();
-          await InAppUpdate.completeFlexibleUpdate();
-        } catch (_) {}
-      }
-      return false;
+    if (info.immediateUpdateAllowed) {
+      return true;
     }
 
-    // Force update: loop until user accepts or exits app
-    while (true) {
+    // Optional update - start flexible, don't block
+    if (info.flexibleUpdateAllowed) {
       try {
-        final result = await InAppUpdate.performImmediateUpdate();
-        if (result == AppUpdateResult.success) {
-          // Play Store restarts the app after update, this rarely runs
-          return true;
-        }
-      } catch (_) {
-        // Failed (e.g. user cancelled)
-      }
-
-      // User cancelled or update failed - show blocking dialog
-      if (!mounted) return true;
-      final retry = await _showMandatoryUpdateDialog();
-      if (!retry) {
-        await SystemNavigator.pop();
-        return true;
-      }
+        await InAppUpdate.startFlexibleUpdate();
+        await InAppUpdate.completeFlexibleUpdate();
+      } catch (_) {}
     }
+    return false;
   }
 
-  Future<bool> _showMandatoryUpdateDialog() async {
-    if (!mounted) return false;
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          icon: const Icon(Icons.system_update, size: 48),
-          title: const Text('Pembaruan Wajib'),
-          content: const Text(
-            'Versi terbaru ShareLiveLoc tersedia. Anda harus update untuk melanjutkan menggunakan aplikasi.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Keluar'),
-            ),
-            FilledButton.icon(
-              onPressed: () => Navigator.pop(ctx, true),
-              icon: const Icon(Icons.system_update),
-              label: const Text('Update'),
-            ),
-          ],
-        ),
-      ),
-    );
-    return result == true;
+  Future<void> _triggerImmediateUpdate() async {
+    if (_updateInProgress) return;
+    setState(() => _updateInProgress = true);
+    try {
+      await InAppUpdate.performImmediateUpdate();
+      // If success, Play Store restarts app. If not success, we stay here.
+    } catch (_) {
+      // User cancelled, or error. Keep blocking UI visible.
+    }
+    if (mounted) setState(() => _updateInProgress = false);
+  }
+
+  void _exitApp() {
+    // Force-close the process
+    exit(0);
   }
 
   @override
@@ -136,68 +108,122 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF2196F3),
-      body: Center(
-        child: FadeTransition(
-          opacity: _fadeAnim,
-          child: ScaleTransition(
-            scale: _scaleAnim,
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(28),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.2),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
+    return PopScope(
+      canPop: !_mandatoryUpdate,
+      child: Scaffold(
+        backgroundColor: const Color(0xFF2196F3),
+        body: Center(
+          child: FadeTransition(
+            opacity: _fadeAnim,
+            child: ScaleTransition(
+              scale: _scaleAnim,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.2),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.location_on,
-                    size: 72,
-                    color: Color(0xFF2196F3),
-                  ),
+                      child: const Icon(
+                        Icons.location_on,
+                        size: 72,
+                        color: Color(0xFF2196F3),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    const Text(
+                      'ShareLiveLoc',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Berbagi Lokasi Real-Time',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    const SizedBox(height: 48),
+                    if (_mandatoryUpdate)
+                      _buildUpdateBlock()
+                    else
+                      const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                  ],
                 ),
-                const SizedBox(height: 24),
-                const Text(
-                  'ShareLiveLoc',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Berbagi Lokasi Real-Time',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 48),
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildUpdateBlock() {
+    return Column(
+      children: [
+        const Icon(Icons.system_update, size: 48, color: Colors.white),
+        const SizedBox(height: 16),
+        const Text(
+          'Pembaruan Wajib',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Text(
+          'Versi terbaru tersedia. Anda harus update untuk menggunakan aplikasi.',
+          textAlign: TextAlign.center,
+          style: TextStyle(color: Colors.white70),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            onPressed: _updateInProgress ? null : _triggerImmediateUpdate,
+            icon: const Icon(Icons.system_update),
+            label: Text(_updateInProgress ? 'Memproses...' : 'Update Sekarang'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF2196F3),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: _exitApp,
+          child: const Text(
+            'Keluar Aplikasi',
+            style: TextStyle(color: Colors.white70),
+          ),
+        ),
+      ],
     );
   }
 }
