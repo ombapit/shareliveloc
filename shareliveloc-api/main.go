@@ -11,6 +11,8 @@ import (
 func main() {
 	models.InitDB()
 
+	handlers.StartCleanupJob()
+
 	r := gin.Default()
 
 	r.Use(cors.New(cors.Config{
