@@ -118,6 +118,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final lng = (msg['longitude'] as num).toDouble();
         final name = msg['name'] as String;
         final icon = msg['icon'] as String;
+        final durationHours = (msg['duration_hours'] as int?) ?? 0;
 
         final idx = _shares.indexWhere((s) => s.id == shareId);
         final updated = ShareLocation(
@@ -127,6 +128,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           groupId: _selectedGroup?.id ?? 0,
           latitude: lat,
           longitude: lng,
+          durationHours: durationHours,
           isActive: true,
         );
         if (idx >= 0) {

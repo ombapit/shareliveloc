@@ -16,13 +16,14 @@ var upgrader = websocket.Upgrader{
 }
 
 type LocationBroadcast struct {
-	ShareID   uint    `json:"share_id"`
-	Name      string  `json:"name"`
-	Icon      string  `json:"icon"`
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
-	IsActive  bool    `json:"is_active"`
-	UpdatedAt string  `json:"updated_at"`
+	ShareID       uint    `json:"share_id"`
+	Name          string  `json:"name"`
+	Icon          string  `json:"icon"`
+	Latitude      float64 `json:"latitude"`
+	Longitude     float64 `json:"longitude"`
+	DurationHours int     `json:"duration_hours"`
+	IsActive      bool    `json:"is_active"`
+	UpdatedAt     string  `json:"updated_at"`
 }
 
 type Hub struct {

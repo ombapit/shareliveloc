@@ -5,6 +5,7 @@ class ShareLocation {
   final int groupId;
   final double latitude;
   final double longitude;
+  final int durationHours;
   final bool isActive;
 
   ShareLocation({
@@ -14,6 +15,7 @@ class ShareLocation {
     required this.groupId,
     required this.latitude,
     required this.longitude,
+    required this.durationHours,
     required this.isActive,
   });
 
@@ -25,6 +27,7 @@ class ShareLocation {
       groupId: json['group_id'] as int,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
+      durationHours: (json['duration_hours'] as int?) ?? 0,
       isActive: json['is_active'] as bool,
     );
   }

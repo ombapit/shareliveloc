@@ -43,13 +43,14 @@ func CreateShare(c *gin.Context) {
 	models.DB.Create(&share)
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
-		ShareID:   share.ID,
-		Name:      share.Name,
-		Icon:      share.Icon,
-		Latitude:  share.Latitude,
-		Longitude: share.Longitude,
-		IsActive:  true,
-		UpdatedAt: time.Now().Format(time.RFC3339),
+		ShareID:       share.ID,
+		Name:          share.Name,
+		Icon:          share.Icon,
+		Latitude:      share.Latitude,
+		Longitude:     share.Longitude,
+		DurationHours: share.DurationHours,
+		IsActive:      true,
+		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
 
 	c.JSON(http.StatusCreated, gin.H{"data": share})
@@ -70,13 +71,14 @@ func UpdateLocation(c *gin.Context) {
 	if share.DurationHours > 0 && time.Now().After(share.ExpiresAt) {
 		models.DB.Model(&share).Update("is_active", false)
 		WsHub.Broadcast(share.GroupID, LocationBroadcast{
-			ShareID:  share.ID,
-			Name:     share.Name,
-			Icon:     share.Icon,
-			Latitude: share.Latitude,
-			Longitude: share.Longitude,
-			IsActive: false,
-			UpdatedAt: time.Now().Format(time.RFC3339),
+			ShareID:       share.ID,
+			Name:          share.Name,
+			Icon:          share.Icon,
+			Latitude:      share.Latitude,
+			Longitude:     share.Longitude,
+			DurationHours: share.DurationHours,
+			IsActive:      false,
+			UpdatedAt:     time.Now().Format(time.RFC3339),
 		})
 		c.JSON(http.StatusBadRequest, gin.H{"error": "share has expired"})
 		return
@@ -97,13 +99,14 @@ func UpdateLocation(c *gin.Context) {
 	})
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
-		ShareID:   share.ID,
-		Name:      share.Name,
-		Icon:      share.Icon,
-		Latitude:  input.Latitude,
-		Longitude: input.Longitude,
-		IsActive:  true,
-		UpdatedAt: time.Now().Format(time.RFC3339),
+		ShareID:       share.ID,
+		Name:          share.Name,
+		Icon:          share.Icon,
+		Latitude:      input.Latitude,
+		Longitude:     input.Longitude,
+		DurationHours: share.DurationHours,
+		IsActive:      true,
+		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
 
 	c.JSON(http.StatusOK, gin.H{"data": share})
@@ -119,13 +122,14 @@ func StopShare(c *gin.Context) {
 	models.DB.Model(&share).Update("is_active", false)
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
-		ShareID:   share.ID,
-		Name:      share.Name,
-		Icon:      share.Icon,
-		Latitude:  share.Latitude,
-		Longitude: share.Longitude,
-		IsActive:  false,
-		UpdatedAt: time.Now().Format(time.RFC3339),
+		ShareID:       share.ID,
+		Name:          share.Name,
+		Icon:          share.Icon,
+		Latitude:      share.Latitude,
+		Longitude:     share.Longitude,
+		DurationHours: share.DurationHours,
+		IsActive:      false,
+		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
 
 	c.JSON(http.StatusOK, gin.H{"data": "sharing stopped"})

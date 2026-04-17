@@ -46,7 +46,7 @@ class MapWidget extends StatelessWidget {
               .where((s) => s.latitude != 0 && s.longitude != 0)
               .map((s) => Marker(
                     point: LatLng(s.latitude, s.longitude),
-                    width: 80,
+                    width: 110,
                     height: 60,
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -69,7 +69,9 @@ class MapWidget extends StatelessWidget {
                             ],
                           ),
                           child: Text(
-                            s.name,
+                            s.durationHours > 0
+                                ? '${s.name} (${s.durationHours} jam)'
+                                : s.name,
                             style: const TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.bold,
