@@ -274,6 +274,8 @@ Future<void> _onServiceStart(ServiceInstance service) async {
 
   StreamSubscription<Position>? positionSub;
   Timer? expiryTimer;
+  Timer? heartbeatTimer;
+  Position? lastPosition;
   int? shareId;
 
   // Read session from SharedPreferences directly
@@ -304,6 +306,7 @@ Future<void> _onServiceStart(ServiceInstance service) async {
   Future<void> stopAndExit() async {
     positionSub?.cancel();
     expiryTimer?.cancel();
+    heartbeatTimer?.cancel();
     await ApiService.stopShare(shareId!);
     await clearPrefs();
     service.invoke('expired');
@@ -333,10 +336,28 @@ Future<void> _onServiceStart(ServiceInstance service) async {
       locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
     );
     print('[ShareLiveLoc] Initial position: ${pos.latitude}, ${pos.longitude}');
+    lastPosition = pos;
     await ApiService.updateLocation(shareId, pos.latitude, pos.longitude);
   } catch (e) {
     print('[ShareLiveLoc] Error getting initial position: $e');
   }
+
+  // Heartbeat: send last known position every 30s to keep share alive
+  // and detect if API has marked it inactive (cleanup job / expiry)
+  heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
+    final pos = lastPosition;
+    final sid = shareId;
+    if (pos == null || sid == null) return;
+    final result = await ApiService.updateLocation(
+      sid,
+      pos.latitude,
+      pos.longitude,
+    );
+    if (result == UpdateLocationResult.inactive) {
+      print('[ShareLiveLoc] Heartbeat: share inactive, stopping...');
+      await stopAndExit();
+    }
+  });
 
   // Start continuous GPS stream
   const locationSettings = LocationSettings(
@@ -347,6 +368,7 @@ Future<void> _onServiceStart(ServiceInstance service) async {
   print('[ShareLiveLoc] Starting GPS stream...');
   positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
       .listen((Position position) async {
+        lastPosition = position;
         if (shareId != null) {
           print(
             '[ShareLiveLoc] Position update: ${position.latitude}, ${position.longitude}',
