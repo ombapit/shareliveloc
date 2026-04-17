@@ -135,6 +135,15 @@ func StopShare(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"data": "sharing stopped"})
 }
 
+func GetShare(c *gin.Context) {
+	var share models.Share
+	if err := models.DB.First(&share, c.Param("id")).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "share not found"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"data": share})
+}
+
 func GetShares(c *gin.Context) {
 	groupID := c.Query("group_id")
 	if groupID == "" {

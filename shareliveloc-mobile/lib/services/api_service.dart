@@ -64,6 +64,21 @@ class ApiService {
     }
   }
 
+  /// Returns true if active, false if inactive, null if network error.
+  static Future<bool?> getShareStatus(int shareId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConfig.baseUrl}/api/shares/$shareId'),
+      );
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        return body['data']['is_active'] as bool;
+      }
+      if (response.statusCode == 404) return false;
+    } catch (_) {}
+    return null;
+  }
+
   static Future<bool> stopShare(int shareId) async {
     final response = await http.put(
       Uri.parse('${AppConfig.baseUrl}/api/shares/$shareId/stop'),

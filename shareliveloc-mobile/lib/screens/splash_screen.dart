@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'main_screen.dart';
 
@@ -33,10 +34,12 @@ class _SplashScreenState extends State<SplashScreen>
   }
 
   Future<void> _bootstrap() async {
-    await Future.wait([
-      _checkForUpdate(),
-      Future.delayed(const Duration(milliseconds: 1500)),
-    ]);
+    final hasUpdate = await _checkForUpdate();
+
+    // If update is mandatory, don't proceed to main screen
+    if (hasUpdate) return;
+
+    await Future.delayed(const Duration(milliseconds: 1500));
 
     if (mounted) {
       Navigator.of(context).pushReplacement(
@@ -45,21 +48,84 @@ class _SplashScreenState extends State<SplashScreen>
     }
   }
 
-  Future<void> _checkForUpdate() async {
-    if (!Platform.isAndroid) return;
+  /// Returns true if an update was required (forced), so caller should
+  /// not proceed to main screen.
+  Future<bool> _checkForUpdate() async {
+    if (!Platform.isAndroid) return false;
+
+    AppUpdateInfo info;
     try {
-      final info = await InAppUpdate.checkForUpdate();
-      if (info.updateAvailability == UpdateAvailability.updateAvailable) {
-        if (info.immediateUpdateAllowed) {
-          await InAppUpdate.performImmediateUpdate();
-        } else if (info.flexibleUpdateAllowed) {
+      info = await InAppUpdate.checkForUpdate();
+    } catch (_) {
+      // Not installed from Play Store or no internet - allow entry
+      return false;
+    }
+
+    if (info.updateAvailability != UpdateAvailability.updateAvailable) {
+      return false;
+    }
+
+    if (!info.immediateUpdateAllowed) {
+      // Optional update - start flexible, don't block
+      if (info.flexibleUpdateAllowed) {
+        try {
           await InAppUpdate.startFlexibleUpdate();
           await InAppUpdate.completeFlexibleUpdate();
-        }
+        } catch (_) {}
       }
-    } catch (_) {
-      // Ignore errors (e.g., not installed from Play Store, no internet)
+      return false;
     }
+
+    // Force update: loop until user accepts or exits app
+    while (true) {
+      try {
+        final result = await InAppUpdate.performImmediateUpdate();
+        if (result == AppUpdateResult.success) {
+          // Play Store restarts the app after update, this rarely runs
+          return true;
+        }
+      } catch (_) {
+        // Failed (e.g. user cancelled)
+      }
+
+      // User cancelled or update failed - show blocking dialog
+      if (!mounted) return true;
+      final retry = await _showMandatoryUpdateDialog();
+      if (!retry) {
+        await SystemNavigator.pop();
+        return true;
+      }
+    }
+  }
+
+  Future<bool> _showMandatoryUpdateDialog() async {
+    if (!mounted) return false;
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(Icons.system_update, size: 48),
+          title: const Text('Pembaruan Wajib'),
+          content: const Text(
+            'Versi terbaru ShareLiveLoc tersedia. Anda harus update untuk melanjutkan menggunakan aplikasi.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('Keluar'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(ctx, true),
+              icon: const Icon(Icons.system_update),
+              label: const Text('Update'),
+            ),
+          ],
+        ),
+      ),
+    );
+    return result == true;
   }
 
   @override

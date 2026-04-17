@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -80,6 +81,17 @@ class LocationService {
         onForeground: _onServiceStart,
       ),
     );
+
+    // Persistent listener for expired event from background service.
+    // Set up once here so it works for both fresh startTracking and
+    // restoreSession flows.
+    service.on('expired').listen((_) {
+      _isTracking = false;
+      _activeShareId = null;
+      _expiresAt = null;
+      clearSession();
+      onExpired?.call();
+    });
   }
 
   static Future<bool> requestPermission(BuildContext context) async {
@@ -201,6 +213,14 @@ class LocationService {
       }
     }
 
+    // Verify share is still active on server before restoring UI.
+    // Handles case where API cleanup marked it inactive while app was closed.
+    final isActive = await ApiService.getShareStatus(shareId);
+    if (isActive == false) {
+      await clearSession();
+      return null;
+    }
+
     _activeShareId = shareId;
     _isTracking = true;
     _expiresAt = expiresAt;
@@ -243,13 +263,6 @@ class LocationService {
       await Future.delayed(const Duration(milliseconds: 100));
     }
 
-    service.on('expired').listen((_) {
-      _isTracking = false;
-      _activeShareId = null;
-      _expiresAt = null;
-      clearSession();
-      onExpired?.call();
-    });
   }
 
   static Future<void> stopTracking() async {
@@ -273,6 +286,7 @@ Future<void> _onServiceStart(ServiceInstance service) async {
   print('[ShareLiveLoc] Service started');
 
   StreamSubscription<Position>? positionSub;
+  StreamSubscription<List<ConnectivityResult>>? connectivitySub;
   Timer? expiryTimer;
   Timer? heartbeatTimer;
   Position? lastPosition;
@@ -305,6 +319,7 @@ Future<void> _onServiceStart(ServiceInstance service) async {
 
   Future<void> stopAndExit() async {
     positionSub?.cancel();
+    connectivitySub?.cancel();
     expiryTimer?.cancel();
     heartbeatTimer?.cancel();
     await ApiService.stopShare(shareId!);
@@ -312,6 +327,22 @@ Future<void> _onServiceStart(ServiceInstance service) async {
     service.invoke('expired');
     if (service is AndroidServiceInstance) {
       await service.stopSelf();
+    }
+  }
+
+  // Heartbeat function: verify share is still active on server
+  Future<void> heartbeat() async {
+    final pos = lastPosition;
+    final sid = shareId;
+    if (pos == null || sid == null) return;
+    final result = await ApiService.updateLocation(
+      sid,
+      pos.latitude,
+      pos.longitude,
+    );
+    if (result == UpdateLocationResult.inactive) {
+      print('[ShareLiveLoc] Heartbeat: share inactive, stopping...');
+      await stopAndExit();
     }
   }
 
@@ -344,18 +375,19 @@ Future<void> _onServiceStart(ServiceInstance service) async {
 
   // Heartbeat: send last known position every 30s to keep share alive
   // and detect if API has marked it inactive (cleanup job / expiry)
-  heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) async {
-    final pos = lastPosition;
-    final sid = shareId;
-    if (pos == null || sid == null) return;
-    final result = await ApiService.updateLocation(
-      sid,
-      pos.latitude,
-      pos.longitude,
-    );
-    if (result == UpdateLocationResult.inactive) {
-      print('[ShareLiveLoc] Heartbeat: share inactive, stopping...');
-      await stopAndExit();
+  heartbeatTimer = Timer.periodic(const Duration(seconds: 30), (_) => heartbeat());
+
+  // Listen for connectivity changes - trigger immediate heartbeat
+  // when network comes back online, so we can detect inactive status quickly.
+  bool wasOffline = false;
+  connectivitySub = Connectivity().onConnectivityChanged.listen((results) async {
+    final hasNetwork = results.any((r) => r != ConnectivityResult.none);
+    if (!hasNetwork) {
+      wasOffline = true;
+    } else if (wasOffline) {
+      wasOffline = false;
+      print('[ShareLiveLoc] Network restored, triggering heartbeat...');
+      await heartbeat();
     }
   });
 
