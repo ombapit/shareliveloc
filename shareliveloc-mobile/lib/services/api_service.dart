@@ -4,6 +4,8 @@ import '../config.dart';
 import '../models/group.dart';
 import '../models/share.dart';
 
+enum UpdateLocationResult { success, inactive, error }
+
 class ApiService {
   static Future<List<Group>> getGroups({String search = '', bool activeOnly = false}) async {
     final params = <String, String>{};
@@ -44,13 +46,22 @@ class ApiService {
     return null;
   }
 
-  static Future<bool> updateLocation(int shareId, double lat, double lng) async {
-    final response = await http.put(
-      Uri.parse('${AppConfig.baseUrl}/api/shares/$shareId/location'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'latitude': lat, 'longitude': lng}),
-    );
-    return response.statusCode == 200;
+  static Future<UpdateLocationResult> updateLocation(
+      int shareId, double lat, double lng) async {
+    try {
+      final response = await http.put(
+        Uri.parse('${AppConfig.baseUrl}/api/shares/$shareId/location'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'latitude': lat, 'longitude': lng}),
+      );
+      if (response.statusCode == 200) return UpdateLocationResult.success;
+      if (response.statusCode == 400 || response.statusCode == 404) {
+        return UpdateLocationResult.inactive;
+      }
+      return UpdateLocationResult.error;
+    } catch (_) {
+      return UpdateLocationResult.error;
+    }
   }
 
   static Future<bool> stopShare(int shareId) async {

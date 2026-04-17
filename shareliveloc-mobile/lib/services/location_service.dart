@@ -346,16 +346,24 @@ Future<void> _onServiceStart(ServiceInstance service) async {
 
   print('[ShareLiveLoc] Starting GPS stream...');
   positionSub = Geolocator.getPositionStream(locationSettings: locationSettings)
-      .listen((Position position) {
+      .listen((Position position) async {
         if (shareId != null) {
           print(
             '[ShareLiveLoc] Position update: ${position.latitude}, ${position.longitude}',
           );
-          ApiService.updateLocation(
+          final result = await ApiService.updateLocation(
             shareId,
             position.latitude,
             position.longitude,
           );
+
+          // If API says share is inactive (stopped by cleanup/expiry),
+          // stop the service and notify UI.
+          if (result == UpdateLocationResult.inactive) {
+            print('[ShareLiveLoc] Share marked inactive by API, stopping...');
+            await stopAndExit();
+            return;
+          }
 
           if (service is AndroidServiceInstance) {
             service.setForegroundNotificationInfo(
