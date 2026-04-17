@@ -24,7 +24,6 @@ class ApiService {
   static Future<int?> createShare({
     required String name,
     required String icon,
-    required String category,
     required String groupName,
     required int durationHours,
   }) async {
@@ -34,7 +33,6 @@ class ApiService {
       body: jsonEncode({
         'name': name,
         'icon': icon,
-        'category': category,
         'group_name': groupName,
         'duration_hours': durationHours,
       }),

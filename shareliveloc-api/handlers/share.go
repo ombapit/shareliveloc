@@ -12,7 +12,6 @@ func CreateShare(c *gin.Context) {
 	var input struct {
 		Name          string `json:"name" binding:"required"`
 		Icon          string `json:"icon" binding:"required"`
-		Category      string `json:"category" binding:"required"`
 		GroupName     string `json:"group_name" binding:"required"`
 		DurationHours int    `json:"duration_hours" binding:"min=0,max=8"`
 	}
@@ -34,7 +33,6 @@ func CreateShare(c *gin.Context) {
 	share := models.Share{
 		Name:     input.Name,
 		Icon:     input.Icon,
-		Category: input.Category,
 		GroupID:  group.ID,
 		IsActive: true,
 	}

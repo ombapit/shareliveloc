@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/material.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:geolocator/geolocator.dart';
@@ -81,7 +82,7 @@ class LocationService {
     );
   }
 
-  static Future<bool> requestPermission() async {
+  static Future<bool> requestPermission(BuildContext context) async {
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) return false;
 
@@ -92,14 +93,44 @@ class LocationService {
     }
     if (permission == LocationPermission.deniedForever) return false;
 
-    // Android 13+ needs notification permission for foreground service
     if (Platform.isAndroid) {
+      // Prominent disclosure for background location (required by Google Play)
+      final bgStatus = await Permission.locationAlways.status;
+      if (!bgStatus.isGranted) {
+        if (!context.mounted) return false;
+        final consent = await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Izin Lokasi Background'),
+            content: const Text(
+              'ShareLiveLoc membutuhkan akses lokasi di background agar posisi Anda tetap terkirim ke group saat aplikasi di-minimize atau layar terkunci.\n\n'
+              'Data lokasi Anda hanya dikirim selama sesi berbagi aktif dan tidak disimpan setelah sesi berakhir.\n\n'
+              'Pilih "Allow all the time" / "Izinkan sepanjang waktu" pada dialog berikutnya.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('Tolak'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('Lanjutkan'),
+              ),
+            ],
+          ),
+        );
+        if (consent != true) return false;
+        await Permission.locationAlways.request();
+      }
+
+      // Notification permission for Android 13+
       final notifStatus = await Permission.notification.status;
       if (!notifStatus.isGranted) {
         await Permission.notification.request();
       }
 
-      // Request disable battery optimization for reliable background tracking
+      // Battery optimization
       final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
       if (!batteryStatus.isGranted) {
         await Permission.ignoreBatteryOptimizations.request();

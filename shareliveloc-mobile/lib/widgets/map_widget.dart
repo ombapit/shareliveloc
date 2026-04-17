@@ -19,6 +19,8 @@ class MapWidget extends StatelessWidget {
         return '🚌';
       case 'car':
         return '🚗';
+      case 'motorcycle':
+        return '🏍️';
       case 'person':
         return '🚶';
       default:

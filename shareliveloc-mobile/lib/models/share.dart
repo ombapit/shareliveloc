@@ -2,7 +2,6 @@ class ShareLocation {
   final int id;
   final String name;
   final String icon;
-  final String category;
   final int groupId;
   final double latitude;
   final double longitude;
@@ -12,7 +11,6 @@ class ShareLocation {
     required this.id,
     required this.name,
     required this.icon,
-    required this.category,
     required this.groupId,
     required this.latitude,
     required this.longitude,
@@ -24,7 +22,6 @@ class ShareLocation {
       id: json['id'] as int,
       name: json['name'] as String,
       icon: json['icon'] as String,
-      category: json['category'] as String,
       groupId: json['group_id'] as int,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),

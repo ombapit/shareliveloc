@@ -19,7 +19,6 @@ type Share struct {
 	ID            uint       `json:"id" gorm:"primaryKey"`
 	Name          string     `json:"name" gorm:"not null"`
 	Icon          string     `json:"icon" gorm:"not null"`
-	Category      string     `json:"category" gorm:"not null"`
 	GroupID       uint       `json:"group_id" gorm:"not null;index"`
 	Group         Group      `json:"group,omitempty" gorm:"foreignKey:GroupID"`
 	Latitude      float64    `json:"latitude"`
@@ -66,15 +65,16 @@ func InitDB() {
 
 	dropRemovedColumns(&Group{}, &Share{}, &AppConfig{})
 
-	// Seed default configs
-	var count int64
-	DB.Model(&AppConfig{}).Count(&count)
-	if count == 0 {
-		configs := []AppConfig{
-			{Key: "ads_enabled", Value: "false"},
-			{Key: "ads_banner_id", Value: "ca-app-pub-3940256099942544/6300978111"},
+	// Seed default configs (only adds missing keys, won't overwrite existing values)
+	defaults := map[string]string{
+		"ads_enabled":   "false",
+		"ads_banner_id": "ca-app-pub-3940256099942544/6300978111",
+	}
+	for key, val := range defaults {
+		var cfg AppConfig
+		if err := DB.Where("key = ?", key).First(&cfg).Error; err != nil {
+			DB.Create(&AppConfig{Key: key, Value: val})
 		}
-		DB.Create(&configs)
 	}
 }
 

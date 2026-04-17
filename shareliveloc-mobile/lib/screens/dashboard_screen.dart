@@ -110,7 +110,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
     setState(() {
       if (!isActive) {
+        final removed = _shares.any((s) => s.id == shareId);
         _shares.removeWhere((s) => s.id == shareId);
+        if (removed) _fitBounds();
       } else {
         final lat = (msg['latitude'] as num).toDouble();
         final lng = (msg['longitude'] as num).toDouble();
@@ -122,22 +124,31 @@ class _DashboardScreenState extends State<DashboardScreen> {
           id: shareId,
           name: name,
           icon: icon,
-          category: '',
           groupId: _selectedGroup?.id ?? 0,
           latitude: lat,
           longitude: lng,
           isActive: true,
         );
         if (idx >= 0) {
+          final prev = _shares[idx];
+          final wasInvalid = prev.latitude == 0 && prev.longitude == 0;
+          final isNowValid = lat != 0 && lng != 0;
           _shares[idx] = updated;
+          if (wasInvalid && isNowValid) {
+            _fitBounds();
+          }
         } else {
           _shares.add(updated);
+          if (lat != 0 && lng != 0) {
+            _fitBounds();
+          }
         }
       }
     });
   }
 
   void _fitBounds() {
+    _mapController.rotate(0);
     final validShares =
         _shares.where((s) => s.latitude != 0 && s.longitude != 0).toList();
     if (validShares.isEmpty) {
@@ -160,6 +171,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _centerOnUser() async {
+    _mapController.rotate(0);
     final pos = await LocationService.getCurrentPosition();
     if (pos != null && mounted) {
       _mapController.move(LatLng(pos.latitude, pos.longitude), 14.0);
@@ -202,6 +214,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 MapWidget(shares: _shares, mapController: _mapController),
                 if (_isLoading)
                   const Center(child: CircularProgressIndicator()),
+                Positioned(
+                  right: 16,
+                  bottom: (_adsEnabled && _isAdLoaded) ? 116 : 66,
+                  child: FloatingActionButton.small(
+                    heroTag: 'refreshBtn',
+                    onPressed: _selectedGroup != null
+                        ? () => _loadShares(_selectedGroup!.id)
+                        : null,
+                    child: const Icon(Icons.refresh),
+                  ),
+                ),
                 Positioned(
                   right: 16,
                   bottom: (_adsEnabled && _isAdLoaded) ? 66 : 16,

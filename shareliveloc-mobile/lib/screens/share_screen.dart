@@ -14,7 +14,6 @@ class ShareScreen extends StatefulWidget {
 class _ShareScreenState extends State<ShareScreen> {
   final _nameController = TextEditingController();
   String _selectedIcon = 'bus';
-  String _selectedCategory = 'Transportasi Umum';
   int _selectedDuration = 1; // 0 = manual
   String _groupName = '';
   bool _isSharing = false;
@@ -30,10 +29,9 @@ class _ShareScreenState extends State<ShareScreen> {
   final _iconOptions = [
     {'value': 'bus', 'label': 'Bus', 'emoji': '🚌'},
     {'value': 'car', 'label': 'Mobil Pribadi', 'emoji': '🚗'},
+    {'value': 'motorcycle', 'label': 'Motor', 'emoji': '🏍️'},
     {'value': 'person', 'label': 'Orang', 'emoji': '🚶'},
   ];
-
-  final _categoryOptions = ['Transportasi Umum', 'Lainnya'];
 
   @override
   void initState() {
@@ -99,7 +97,6 @@ class _ShareScreenState extends State<ShareScreen> {
       _groupName = '';
       _groupFieldKey = UniqueKey();
       _selectedIcon = 'bus';
-      _selectedCategory = 'Transportasi Umum';
       _selectedDuration = 1;
     });
     ScaffoldMessenger.of(context).showSnackBar(
@@ -131,7 +128,7 @@ class _ShareScreenState extends State<ShareScreen> {
       return;
     }
 
-    final hasPermission = await LocationService.requestPermission();
+    final hasPermission = await LocationService.requestPermission(context);
     if (!hasPermission) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -147,7 +144,6 @@ class _ShareScreenState extends State<ShareScreen> {
       final shareId = await ApiService.createShare(
         name: _nameController.text.trim(),
         icon: _selectedIcon,
-        category: _selectedCategory,
         groupName: _groupName.trim(),
         durationHours: _selectedDuration,
       );
@@ -204,7 +200,6 @@ class _ShareScreenState extends State<ShareScreen> {
         _groupName = '';
         _groupFieldKey = UniqueKey();
         _selectedIcon = 'bus';
-        _selectedCategory = 'Transportasi Umum';
         _selectedDuration = 1;
       });
     }
@@ -216,6 +211,8 @@ class _ShareScreenState extends State<ShareScreen> {
         return '🚌';
       case 'car':
         return '🚗';
+      case 'motorcycle':
+        return '🏍️';
       case 'person':
         return '🚶';
       default:
@@ -349,20 +346,6 @@ class _ShareScreenState extends State<ShareScreen> {
                 .toList(),
             onChanged: (val) {
               if (val != null) setState(() => _selectedIcon = val);
-            },
-          ),
-          const SizedBox(height: 16),
-          DropdownButtonFormField<String>(
-            initialValue: _selectedCategory,
-            decoration: const InputDecoration(
-              labelText: 'Kategori',
-              border: OutlineInputBorder(),
-            ),
-            items: _categoryOptions
-                .map((cat) => DropdownMenuItem(value: cat, child: Text(cat)))
-                .toList(),
-            onChanged: (val) {
-              if (val != null) setState(() => _selectedCategory = val);
             },
           ),
           const SizedBox(height: 16),
