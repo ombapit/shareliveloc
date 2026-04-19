@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../config.dart';
 import '../models/group.dart';
+import '../models/message.dart';
 import '../models/share.dart';
 
 enum UpdateLocationResult { success, inactive, error }
@@ -96,6 +97,42 @@ class ApiService {
       return list.map((e) => ShareLocation.fromJson(e)).toList();
     }
     return [];
+  }
+
+  static Future<List<ChatMessage>> getMessages(int groupId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/messages'),
+      );
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final list = body['data'] as List;
+        return list.map((e) => ChatMessage.fromJson(e)).toList();
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  static Future<ChatMessage?> sendMessage({
+    required int groupId,
+    required String senderName,
+    required String content,
+  }) async {
+    try {
+      final response = await http.post(
+        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/messages'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'sender_name': senderName,
+          'content': content,
+        }),
+      );
+      if (response.statusCode == 201) {
+        final body = jsonDecode(response.body);
+        return ChatMessage.fromJson(body['data']);
+      }
+    } catch (_) {}
+    return null;
   }
 
   static Future<Map<String, String>> getConfigs() async {

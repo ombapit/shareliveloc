@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:latlong2/latlong.dart';
 import '../models/group.dart';
@@ -11,6 +12,7 @@ import '../services/location_service.dart';
 import '../services/websocket_service.dart';
 import '../widgets/group_search_field.dart';
 import '../widgets/map_widget.dart';
+import 'chat_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -26,8 +28,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Group? _selectedGroup;
   bool _isLoading = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  StreamSubscription<Position>? _userLocationSub;
   Timer? _labelTimer;
   bool _wasOffline = false;
+  LatLng? _userLocation;
+  bool _gpsActive = false;
+  int? _followedShareId;
 
   // Ads
   BannerAd? _bannerAd;
@@ -64,10 +70,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void dispose() {
     _wsService.disconnect();
     _connectivitySub?.cancel();
+    _userLocationSub?.cancel();
     _labelTimer?.cancel();
     _mapController.dispose();
     _bannerAd?.dispose();
     super.dispose();
+  }
+
+  Future<void> _toggleGps() async {
+    if (_gpsActive) {
+      // Turn off
+      await _userLocationSub?.cancel();
+      _userLocationSub = null;
+      setState(() {
+        _gpsActive = false;
+        _userLocation = null;
+      });
+      return;
+    }
+
+    // Turn on - check permission + start stream
+    final hasPermission = await LocationService.requestPermission(context);
+    if (!hasPermission) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Izin GPS diperlukan')),
+        );
+      }
+      return;
+    }
+
+    _userLocationSub = Geolocator.getPositionStream(
+      locationSettings: const LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 2,
+      ),
+    ).listen((pos) {
+      if (!mounted) return;
+      setState(() {
+        _userLocation = LatLng(pos.latitude, pos.longitude);
+      });
+    });
+
+    // Also center on user immediately
+    _mapController.rotate(0);
+    final pos = await LocationService.getCurrentPosition();
+    if (pos != null && mounted) {
+      setState(() {
+        _gpsActive = true;
+        _userLocation = LatLng(pos.latitude, pos.longitude);
+      });
+      _mapController.move(LatLng(pos.latitude, pos.longitude), 15.0);
+    } else {
+      setState(() => _gpsActive = true);
+    }
   }
 
   void _listenConnectivity() {
@@ -86,6 +142,122 @@ class _DashboardScreenState extends State<DashboardScreen> {
         }
       }
     });
+  }
+
+  void _showMarkerPopup(ShareLocation share) {
+    final isFollowing = _followedShareId == share.id;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      _emojiFor(share.icon),
+                      style: const TextStyle(fontSize: 32),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            share.name,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (share.expiresAt != null)
+                            Text(
+                              _remainingText(share.expiresAt!),
+                              style: TextStyle(
+                                color: Colors.grey.shade600,
+                                fontSize: 13,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                SizedBox(
+                  height: 48,
+                  child: FilledButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _toggleFollow(share);
+                    },
+                    icon: Icon(isFollowing
+                        ? Icons.location_off
+                        : Icons.navigation),
+                    label: Text(
+                      isFollowing ? 'Berhenti Ikuti' : 'Ikuti',
+                      style: const TextStyle(fontSize: 16),
+                    ),
+                    style: isFollowing
+                        ? FilledButton.styleFrom(
+                            backgroundColor: Colors.red,
+                          )
+                        : null,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _toggleFollow(ShareLocation share) {
+    if (_followedShareId == share.id) {
+      setState(() => _followedShareId = null);
+      _fitBounds();
+    } else {
+      setState(() => _followedShareId = share.id);
+      _mapController.rotate(0);
+      _mapController.move(
+        LatLng(share.latitude, share.longitude),
+        _mapController.camera.zoom,
+      );
+    }
+  }
+
+  String _emojiFor(String icon) {
+    switch (icon) {
+      case 'bus':
+        return '🚌';
+      case 'car':
+        return '🚗';
+      case 'motorcycle':
+        return '🏍️';
+      case 'person':
+        return '🚶';
+      default:
+        return '📍';
+    }
+  }
+
+  String _remainingText(DateTime expiresAt) {
+    final diff = expiresAt.difference(DateTime.now());
+    if (diff.isNegative) return 'Expired';
+    final h = diff.inHours;
+    final m = diff.inMinutes.remainder(60);
+    if (h >= 1) {
+      return m == 0
+          ? '$h hour${h > 1 ? 's' : ''} remaining'
+          : '$h hour${h > 1 ? 's' : ''} $m minute${m > 1 ? 's' : ''} remaining';
+    }
+    final mins = diff.inMinutes < 1 ? 1 : diff.inMinutes;
+    return '$mins minute${mins > 1 ? 's' : ''} remaining';
   }
 
   Future<void> _loadAdConfig() async {
@@ -150,6 +322,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onWsMessage(Map<String, dynamic> msg) {
+    // Dashboard only handles location broadcasts; chat handled by ChatScreen
+    if (msg['type'] != null && msg['type'] != 'location') return;
     final shareId = msg['share_id'] as int;
     final isActive = msg['is_active'] as bool;
 
@@ -157,6 +331,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
       if (!isActive) {
         final removed = _shares.any((s) => s.id == shareId);
         _shares.removeWhere((s) => s.id == shareId);
+        if (_followedShareId == shareId) {
+          _followedShareId = null;
+        }
         if (removed) _fitBounds();
       } else {
         final lat = (msg['latitude'] as num).toDouble();
@@ -187,12 +364,16 @@ class _DashboardScreenState extends State<DashboardScreen> {
           final wasInvalid = prev.latitude == 0 && prev.longitude == 0;
           final isNowValid = lat != 0 && lng != 0;
           _shares[idx] = updated;
-          if (wasInvalid && isNowValid) {
+          // If following this share, track its new position (keep current zoom)
+          if (_followedShareId == shareId && isNowValid) {
+            _mapController.move(LatLng(lat, lng), _mapController.camera.zoom);
+          } else if (wasInvalid && isNowValid && _followedShareId == null) {
             _fitBounds();
           }
         } else {
           _shares.add(updated);
-          if (lat != 0 && lng != 0) {
+          // Only fit bounds when NOT following any marker
+          if (lat != 0 && lng != 0 && _followedShareId == null) {
             _fitBounds();
           }
         }
@@ -252,11 +433,27 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   const Icon(Icons.group, size: 18),
                   const SizedBox(width: 6),
-                  Text(
-                    'Grup: ${_selectedGroup!.name}',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  Expanded(
+                    child: Text(
+                      'Grup: ${_selectedGroup!.name}',
+                      style: const TextStyle(fontWeight: FontWeight.bold),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.chat_bubble_outline),
+                    tooltip: 'Chat Grup',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ChatScreen(group: _selectedGroup!),
+                        ),
+                      );
+                    },
+                  ),
                   Text('${_shares.length} aktif'),
                 ],
               ),
@@ -265,7 +462,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
           Expanded(
             child: Stack(
               children: [
-                MapWidget(shares: _shares, mapController: _mapController),
+                MapWidget(
+                  shares: _shares,
+                  mapController: _mapController,
+                  userLocation: _userLocation,
+                  followedShareId: _followedShareId,
+                  onMarkerTap: _showMarkerPopup,
+                ),
                 if (_isLoading)
                   const Center(child: CircularProgressIndicator()),
                 Positioned(
@@ -284,8 +487,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   bottom: (_adsEnabled && _isAdLoaded) ? 66 : 16,
                   child: FloatingActionButton.small(
                     heroTag: 'centerBtn',
-                    onPressed: _centerOnUser,
-                    child: const Icon(Icons.my_location),
+                    onPressed: _toggleGps,
+                    backgroundColor: _gpsActive
+                        ? const Color(0xFF4285F4)
+                        : null,
+                    foregroundColor: _gpsActive ? Colors.white : null,
+                    child: Icon(
+                      _gpsActive ? Icons.my_location : Icons.location_searching,
+                    ),
                   ),
                 ),
               ],

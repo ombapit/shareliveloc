@@ -46,6 +46,7 @@ func cleanupStaleShares() {
 		models.DB.Model(&share).Update("is_active", false)
 
 		WsHub.Broadcast(share.GroupID, LocationBroadcast{
+			Type:          "location",
 			ShareID:       share.ID,
 			Name:          share.Name,
 			Icon:          share.Icon,

@@ -36,6 +36,9 @@ func main() {
 
 		api.GET("/config", handlers.GetConfigs)
 		api.GET("/config/:key", handlers.GetConfig)
+
+		api.POST("/groups/:id/messages", handlers.CreateMessage)
+		api.GET("/groups/:id/messages", handlers.GetMessages)
 	}
 
 	r.GET("/ws/location/:group_id", handlers.HandleWebSocket)

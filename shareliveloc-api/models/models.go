@@ -36,6 +36,14 @@ type AppConfig struct {
 	Value string `json:"value" gorm:"not null"`
 }
 
+type Message struct {
+	ID         uint      `json:"id" gorm:"primaryKey"`
+	GroupID    uint      `json:"group_id" gorm:"not null;index"`
+	SenderName string    `json:"sender_name" gorm:"not null"`
+	Content    string    `json:"content" gorm:"not null"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 var DB *gorm.DB
 
 func getEnv(key, fallback string) string {
@@ -61,9 +69,9 @@ func InitDB() {
 		panic("failed to connect database: " + err.Error())
 	}
 
-	DB.AutoMigrate(&Group{}, &Share{}, &AppConfig{})
+	DB.AutoMigrate(&Group{}, &Share{}, &AppConfig{}, &Message{})
 
-	dropRemovedColumns(&Group{}, &Share{}, &AppConfig{})
+	dropRemovedColumns(&Group{}, &Share{}, &AppConfig{}, &Message{})
 
 	// Seed default configs (only adds missing keys, won't overwrite existing values)
 	defaults := map[string]string{

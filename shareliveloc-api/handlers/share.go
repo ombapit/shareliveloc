@@ -50,6 +50,7 @@ func CreateShare(c *gin.Context) {
 	models.DB.Create(&share)
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
+		Type:          "location",
 		ShareID:       share.ID,
 		Name:          share.Name,
 		Icon:          share.Icon,
@@ -79,6 +80,7 @@ func UpdateLocation(c *gin.Context) {
 	if share.DurationHours > 0 && time.Now().After(share.ExpiresAt) {
 		models.DB.Model(&share).Update("is_active", false)
 		WsHub.Broadcast(share.GroupID, LocationBroadcast{
+			Type:          "location",
 			ShareID:       share.ID,
 			Name:          share.Name,
 			Icon:          share.Icon,
@@ -107,6 +109,7 @@ func UpdateLocation(c *gin.Context) {
 	})
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
+		Type:          "location",
 		ShareID:       share.ID,
 		Name:          share.Name,
 		Icon:          share.Icon,
@@ -131,6 +134,7 @@ func StopShare(c *gin.Context) {
 	models.DB.Model(&share).Update("is_active", false)
 
 	WsHub.Broadcast(share.GroupID, LocationBroadcast{
+		Type:          "location",
 		ShareID:       share.ID,
 		Name:          share.Name,
 		Icon:          share.Icon,

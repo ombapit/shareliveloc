@@ -16,6 +16,7 @@ var upgrader = websocket.Upgrader{
 }
 
 type LocationBroadcast struct {
+	Type          string  `json:"type"`
 	ShareID       uint    `json:"share_id"`
 	Name          string  `json:"name"`
 	Icon          string  `json:"icon"`
@@ -25,6 +26,15 @@ type LocationBroadcast struct {
 	ExpiresAt     string  `json:"expires_at"`
 	IsActive      bool    `json:"is_active"`
 	UpdatedAt     string  `json:"updated_at"`
+}
+
+type MessageBroadcast struct {
+	Type       string `json:"type"`
+	MessageID  uint   `json:"message_id"`
+	GroupID    uint   `json:"group_id"`
+	SenderName string `json:"sender_name"`
+	Content    string `json:"content"`
+	CreatedAt  string `json:"created_at"`
 }
 
 type Hub struct {
@@ -56,7 +66,7 @@ func (h *Hub) Unregister(groupID uint, conn *websocket.Conn) {
 	}
 }
 
-func (h *Hub) Broadcast(groupID uint, msg LocationBroadcast) {
+func (h *Hub) Broadcast(groupID uint, msg interface{}) {
 	data, err := json.Marshal(msg)
 	if err != nil {
 		return
