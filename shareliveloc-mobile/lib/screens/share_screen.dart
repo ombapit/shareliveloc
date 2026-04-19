@@ -110,6 +110,7 @@ class _ShareScreenState extends State<ShareScreen> {
       _selectedIcon = 'bus';
       _selectedDuration = 1;
     });
+    _loadSavedTrakteer();
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Waktu berbagi lokasi telah habis'),
@@ -213,12 +214,12 @@ class _ShareScreenState extends State<ShareScreen> {
       setState(() {
         _isSharing = false;
         _nameController.clear();
-        _trakteerController.clear();
         _groupName = '';
         _groupFieldKey = UniqueKey();
         _selectedIcon = 'bus';
         _selectedDuration = 1;
       });
+      _loadSavedTrakteer();
     }
   }
 
