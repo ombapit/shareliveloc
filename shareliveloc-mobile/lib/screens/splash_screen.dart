@@ -111,7 +111,7 @@ class _SplashScreenState extends State<SplashScreen>
     return PopScope(
       canPop: !_mandatoryUpdate,
       child: Scaffold(
-        backgroundColor: const Color(0xFF2196F3),
+        backgroundColor: const Color(0xFF008069),
         body: Center(
           child: FadeTransition(
             opacity: _fadeAnim,
@@ -139,7 +139,7 @@ class _SplashScreenState extends State<SplashScreen>
                       child: const Icon(
                         Icons.location_on,
                         size: 72,
-                        color: Color(0xFF2196F3),
+                        color: Color(0xFF008069),
                       ),
                     ),
                     const SizedBox(height: 24),
@@ -210,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
             label: Text(_updateInProgress ? 'Memproses...' : 'Update Sekarang'),
             style: FilledButton.styleFrom(
               backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF2196F3),
+              foregroundColor: const Color(0xFF008069),
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
           ),

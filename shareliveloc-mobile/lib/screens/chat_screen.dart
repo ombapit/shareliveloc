@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import '../config.dart';
@@ -8,6 +9,7 @@ import '../models/message.dart';
 import '../services/api_service.dart';
 import '../services/message_storage.dart';
 import '../services/user_service.dart';
+import '../theme.dart';
 
 class ChatScreen extends StatefulWidget {
   final Group group;
@@ -20,15 +22,22 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final _inputController = TextEditingController();
   final _scrollController = ScrollController();
+  final _inputFocus = FocusNode();
   List<ChatMessage> _messages = [];
   String? _userName;
   bool _loading = true;
   bool _sending = false;
+  bool _emojiOpen = false;
   WebSocketChannel? _channel;
 
   @override
   void initState() {
     super.initState();
+    _inputFocus.addListener(() {
+      if (_inputFocus.hasFocus && _emojiOpen) {
+        setState(() => _emojiOpen = false);
+      }
+    });
     _init();
   }
 
@@ -36,12 +45,12 @@ class _ChatScreenState extends State<ChatScreen> {
   void dispose() {
     _inputController.dispose();
     _scrollController.dispose();
+    _inputFocus.dispose();
     _channel?.sink.close();
     super.dispose();
   }
 
   Future<void> _init() async {
-    // Load from local storage first for instant display
     final cached = await MessageStorage.load(widget.group.id);
     final name = await UserService.getName();
     if (!mounted) return;
@@ -57,8 +66,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _syncFromServer() async {
-    // If user cleared, only fetch messages newer than the cutoff.
-    // Otherwise fetch newer than the latest cached message (if any).
     final cutoff = await MessageStorage.getCutoff(widget.group.id);
     final latestLocal = _messages.isEmpty ? null : _messages.last.id;
     int? since;
@@ -233,8 +240,6 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (confirm != true) return;
 
-    // Cutoff = highest message ID we've seen. Future syncs will only
-    // return messages with id > cutoff.
     final cutoffId = _messages.isEmpty
         ? (await MessageStorage.getCutoff(widget.group.id))
         : _messages.map((m) => m.id).reduce((a, b) => a > b ? a : b);
@@ -246,6 +251,35 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _toggleEmoji() {
+    setState(() => _emojiOpen = !_emojiOpen);
+    if (_emojiOpen) {
+      // Hide keyboard
+      _inputFocus.unfocus();
+      FocusManager.instance.primaryFocus?.unfocus();
+    } else {
+      _inputFocus.requestFocus();
+    }
+  }
+
+  void _onEmojiSelected(Category? category, Emoji emoji) {
+    _inputController
+      ..text = _inputController.text + emoji.emoji
+      ..selection = TextSelection.fromPosition(
+        TextPosition(offset: _inputController.text.length),
+      );
+  }
+
+  void _onBackspacePressed() {
+    final text = _inputController.text;
+    if (text.isEmpty) return;
+    final newText = text.characters.skipLast(1).toString();
+    _inputController
+      ..text = newText
+      ..selection =
+          TextSelection.fromPosition(TextPosition(offset: newText.length));
+  }
+
   String _formatTime(DateTime dt) {
     final local = dt.toLocal();
     final h = local.hour.toString().padLeft(2, '0');
@@ -255,114 +289,172 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return PopScope(
+      canPop: !_emojiOpen,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _emojiOpen) {
+          setState(() => _emojiOpen = false);
+        }
+      },
+      child: Scaffold(
+        backgroundColor: AppTheme.chatBackground,
+        appBar: AppBar(
+          title: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(widget.group.name, style: const TextStyle(fontSize: 16)),
+              if (_userName != null)
+                Text(
+                  'Anda: $_userName',
+                  style: const TextStyle(fontSize: 11),
+                ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.person_outline),
+              tooltip: 'Edit Nama',
+              onPressed: () => _promptSetName(edit: true),
+            ),
+            PopupMenuButton<String>(
+              onSelected: (value) {
+                if (value == 'clear') _clearLocal();
+              },
+              itemBuilder: (ctx) => [
+                PopupMenuItem(
+                  value: 'clear',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.cleaning_services_outlined,
+                        size: 20,
+                        color: Colors.grey.shade700,
+                      ),
+                      const SizedBox(width: 12),
+                      const Text(
+                        'Bersihkan Chat',
+                        style: TextStyle(color: Colors.black87),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        body: Column(
           children: [
-            Text(widget.group.name, style: const TextStyle(fontSize: 16)),
-            if (_userName != null)
-              Text(
-                'Anda: $_userName',
-                style: const TextStyle(fontSize: 11),
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _messages.isEmpty
+                      ? Center(
+                          child: Text(
+                            'Belum ada pesan.\nMulai percakapan!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(color: Colors.grey.shade700),
+                          ),
+                        )
+                      : ListView.builder(
+                          controller: _scrollController,
+                          padding: const EdgeInsets.all(12),
+                          itemCount: _messages.length,
+                          itemBuilder: (ctx, i) {
+                            final msg = _messages[i];
+                            final isMe = msg.senderName == _userName;
+                            return _buildBubble(msg, isMe);
+                          },
+                        ),
+            ),
+            _buildInputBar(),
+            if (_emojiOpen)
+              SizedBox(
+                height: 280,
+                child: EmojiPicker(
+                  onEmojiSelected: _onEmojiSelected,
+                  onBackspacePressed: _onBackspacePressed,
+                  config: Config(
+                    height: 280,
+                    emojiViewConfig: const EmojiViewConfig(
+                      columns: 8,
+                      emojiSizeMax: 28,
+                      backgroundColor: Color(0xFFF0F0F0),
+                    ),
+                    categoryViewConfig: const CategoryViewConfig(
+                      backgroundColor: Color(0xFFF0F0F0),
+                      indicatorColor: AppTheme.primary,
+                      iconColorSelected: AppTheme.primary,
+                    ),
+                    bottomActionBarConfig: const BottomActionBarConfig(
+                      backgroundColor: Color(0xFFE0E0E0),
+                      buttonColor: Color(0xFFE0E0E0),
+                      buttonIconColor: AppTheme.primaryDark,
+                      showBackspaceButton: true,
+                    ),
+                    searchViewConfig: const SearchViewConfig(
+                      backgroundColor: Color(0xFFE0E0E0),
+                      buttonIconColor: AppTheme.primaryDark,
+                      hintText: 'Cari emoji',
+                    ),
+                  ),
+                ),
               ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.person_outline),
-            tooltip: 'Edit Nama',
-            onPressed: () => _promptSetName(edit: true),
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'clear') _clearLocal();
-            },
-            itemBuilder: (ctx) => [
-              const PopupMenuItem(
-                value: 'clear',
-                child: Row(
-                  children: [
-                    Icon(Icons.cleaning_services_outlined, size: 20),
-                    SizedBox(width: 12),
-                    Text('Bersihkan Chat'),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _messages.isEmpty
-                    ? Center(
-                        child: Text(
-                          'Belum ada pesan.\nMulai percakapan!',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(color: Colors.grey.shade600),
-                        ),
-                      )
-                    : ListView.builder(
-                        controller: _scrollController,
-                        padding: const EdgeInsets.all(12),
-                        itemCount: _messages.length,
-                        itemBuilder: (ctx, i) {
-                          final msg = _messages[i];
-                          final isMe = msg.senderName == _userName;
-                          return _buildBubble(msg, isMe);
-                        },
-                      ),
-          ),
-          _buildInputBar(),
-        ],
       ),
     );
   }
 
   Widget _buildBubble(ChatMessage msg, bool isMe) {
-    final color = isMe
-        ? Theme.of(context).colorScheme.primary
-        : Colors.grey.shade200;
-    final textColor = isMe ? Colors.white : Colors.black87;
+    final bubbleColor = isMe ? AppTheme.bubbleOut : AppTheme.bubbleIn;
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(
-          maxWidth: MediaQuery.of(context).size.width * 0.75,
+          maxWidth: MediaQuery.of(context).size.width * 0.78,
         ),
-        margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        margin: const EdgeInsets.only(bottom: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: BoxDecoration(
-          color: color,
-          borderRadius: BorderRadius.circular(14),
+          color: bubbleColor,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(8),
+            topRight: const Radius.circular(8),
+            bottomLeft: isMe ? const Radius.circular(8) : Radius.zero,
+            bottomRight: isMe ? Radius.zero : const Radius.circular(8),
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.08),
+              blurRadius: 1,
+              offset: const Offset(0, 1),
+            ),
+          ],
         ),
         child: Column(
-          crossAxisAlignment:
-              isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isMe)
               Text(
                 msg.senderName,
-                style: TextStyle(
-                  fontSize: 11,
+                style: const TextStyle(
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
+                  color: AppTheme.primaryDeeper,
                 ),
               ),
             Text(
               msg.content,
-              style: TextStyle(color: textColor, fontSize: 14),
+              style: const TextStyle(color: Colors.black87, fontSize: 15),
             ),
-            const SizedBox(height: 2),
-            Text(
-              _formatTime(msg.createdAt),
-              style: TextStyle(
-                fontSize: 10,
-                color: isMe ? Colors.white70 : Colors.grey.shade600,
+            Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                _formatTime(msg.createdAt),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.grey.shade600,
+                ),
               ),
             ),
           ],
@@ -373,48 +465,79 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildInputBar() {
     return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(top: BorderSide(color: Colors.grey.shade300)),
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+      color: AppTheme.chatBackground,
       child: SafeArea(
+        top: false,
         child: Row(
           children: [
             Expanded(
-              child: TextField(
-                controller: _inputController,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => _send(),
-                decoration: InputDecoration(
-                  hintText: _userName == null
-                      ? 'Tap untuk atur nama...'
-                      : 'Ketik pesan...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 10,
-                  ),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
                 ),
-                onTap: () {
-                  if (_userName == null) _promptSetName();
-                },
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: _toggleEmoji,
+                      icon: Icon(
+                        _emojiOpen
+                            ? Icons.keyboard_outlined
+                            : Icons.emoji_emotions_outlined,
+                        color: Colors.grey.shade700,
+                      ),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: _inputController,
+                        focusNode: _inputFocus,
+                        textInputAction: TextInputAction.send,
+                        onSubmitted: (_) => _send(),
+                        decoration: InputDecoration(
+                          hintText: _userName == null
+                              ? 'Tap untuk atur nama...'
+                              : 'Ketik pesan',
+                          border: InputBorder.none,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            vertical: 10,
+                          ),
+                        ),
+                        onTap: () {
+                          if (_userName == null) _promptSetName();
+                          if (_emojiOpen) {
+                            setState(() => _emojiOpen = false);
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
               ),
             ),
-            const SizedBox(width: 8),
-            IconButton(
-              onPressed: _sending ? null : _send,
-              icon: _sending
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.send),
-              color: Theme.of(context).colorScheme.primary,
+            const SizedBox(width: 6),
+            Material(
+              color: AppTheme.primary,
+              shape: const CircleBorder(),
+              child: InkWell(
+                customBorder: const CircleBorder(),
+                onTap: _sending ? null : _send,
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: _sending
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send, color: Colors.white, size: 22),
+                ),
+              ),
             ),
           ],
         ),

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'services/location_service.dart';
+import 'theme.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,10 +17,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'ShareLiveLoc',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorSchemeSeed: Colors.blue,
-        useMaterial3: true,
-      ),
+      theme: AppTheme.light(),
       home: const SplashScreen(),
     );
   }
