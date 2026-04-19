@@ -99,11 +99,13 @@ class ApiService {
     return [];
   }
 
-  static Future<List<ChatMessage>> getMessages(int groupId) async {
+  static Future<List<ChatMessage>> getMessages(int groupId, {int? since}) async {
     try {
-      final response = await http.get(
-        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/messages'),
-      );
+      final params = <String, String>{};
+      if (since != null) params['since'] = since.toString();
+      final uri = Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/messages')
+          .replace(queryParameters: params.isEmpty ? null : params);
+      final response = await http.get(uri);
       if (response.statusCode == 200) {
         final body = jsonDecode(response.body);
         final list = body['data'] as List;

@@ -66,11 +66,22 @@ func GetMessages(c *gin.Context) {
 		}
 	}
 
+	query := models.DB.Where("group_id = ?", groupID)
+
+	// Optional: only return messages after a given ID (client has cleared local)
+	if since := c.Query("since"); since != "" {
+		if sinceID, err := strconv.Atoi(since); err == nil {
+			query = query.Where("id > ?", sinceID)
+		}
+	}
+
 	var messages []models.Message
-	models.DB.Where("group_id = ?", groupID).
-		Order("created_at asc").
-		Limit(limit).
-		Find(&messages)
+	query.Order("created_at desc").Limit(limit).Find(&messages)
+
+	// Reverse to chronological (oldest first)
+	for i, j := 0, len(messages)-1; i < j; i, j = i+1, j-1 {
+		messages[i], messages[j] = messages[j], messages[i]
+	}
 
 	c.JSON(http.StatusOK, gin.H{"data": messages})
 }

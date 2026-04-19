@@ -6,6 +6,7 @@ import '../config.dart';
 import '../models/group.dart';
 import '../models/message.dart';
 import '../services/api_service.dart';
+import '../services/message_storage.dart';
 import '../services/user_service.dart';
 
 class ChatScreen extends StatefulWidget {
@@ -40,15 +41,49 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _init() async {
+    // Load from local storage first for instant display
+    final cached = await MessageStorage.load(widget.group.id);
     final name = await UserService.getName();
-    final messages = await ApiService.getMessages(widget.group.id);
     if (!mounted) return;
     setState(() {
       _userName = name;
-      _messages = messages;
+      _messages = cached;
       _loading = false;
     });
+    _scrollToBottom(animate: false);
+
     _connectWebSocket();
+    _syncFromServer();
+  }
+
+  Future<void> _syncFromServer() async {
+    // If user cleared, only fetch messages newer than the cutoff.
+    // Otherwise fetch newer than the latest cached message (if any).
+    final cutoff = await MessageStorage.getCutoff(widget.group.id);
+    final latestLocal = _messages.isEmpty ? null : _messages.last.id;
+    int? since;
+    if (cutoff != null && latestLocal != null) {
+      since = cutoff > latestLocal ? cutoff : latestLocal;
+    } else {
+      since = cutoff ?? latestLocal;
+    }
+
+    final serverMessages =
+        await ApiService.getMessages(widget.group.id, since: since);
+    if (!mounted || serverMessages.isEmpty) return;
+
+    final existingIds = _messages.map((m) => m.id).toSet();
+    final newOnes =
+        serverMessages.where((m) => !existingIds.contains(m.id)).toList();
+    if (newOnes.isEmpty) return;
+
+    final combined = [..._messages, ...newOnes];
+    combined.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+
+    setState(() {
+      _messages = combined;
+    });
+    await MessageStorage.save(widget.group.id, _messages);
     _scrollToBottom();
   }
 
@@ -62,15 +97,7 @@ class _ChatScreenState extends State<ChatScreen> {
         try {
           final msg = jsonDecode(data as String) as Map<String, dynamic>;
           if (msg['type'] == 'message') {
-            final chatMsg = ChatMessage.fromWsBroadcast(msg);
-            if (!mounted) return;
-            setState(() {
-              // Avoid duplicate (if we just sent it)
-              if (!_messages.any((m) => m.id == chatMsg.id)) {
-                _messages.add(chatMsg);
-              }
-            });
-            _scrollToBottom();
+            _handleIncoming(ChatMessage.fromWsBroadcast(msg));
           }
         } catch (_) {}
       },
@@ -79,14 +106,27 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _scrollToBottom() {
+  void _handleIncoming(ChatMessage chatMsg) {
+    if (!mounted) return;
+    if (_messages.any((m) => m.id == chatMsg.id)) return;
+    setState(() {
+      _messages.add(chatMsg);
+    });
+    MessageStorage.save(widget.group.id, _messages);
+    _scrollToBottom();
+  }
+
+  void _scrollToBottom({bool animate = true}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scrollController.hasClients) {
+      if (!_scrollController.hasClients) return;
+      if (animate) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
           duration: const Duration(milliseconds: 200),
           curve: Curves.easeOut,
         );
+      } else {
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
       }
     });
   }
@@ -157,13 +197,53 @@ class _ChatScreenState extends State<ChatScreen> {
         _messages.add(sent);
       }
     });
+    if (sent != null) {
+      await MessageStorage.save(widget.group.id, _messages);
+    }
     _scrollToBottom();
 
-    if (sent == null) {
+    if (sent == null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Gagal mengirim pesan')),
       );
     }
+  }
+
+  Future<void> _clearLocal() async {
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Bersihkan Chat?'),
+        content: const Text(
+          'Pesan akan dihapus dari perangkat Anda saja. '
+          'Pesan di server tetap tersimpan dan anggota grup lain masih bisa melihatnya.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Batal'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Bersihkan'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    // Cutoff = highest message ID we've seen. Future syncs will only
+    // return messages with id > cutoff.
+    final cutoffId = _messages.isEmpty
+        ? (await MessageStorage.getCutoff(widget.group.id))
+        : _messages.map((m) => m.id).reduce((a, b) => a > b ? a : b);
+
+    await MessageStorage.clear(widget.group.id, cutoffId: cutoffId);
+    if (!mounted) return;
+    setState(() {
+      _messages = [];
+    });
   }
 
   String _formatTime(DateTime dt) {
@@ -193,6 +273,23 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: const Icon(Icons.person_outline),
             tooltip: 'Edit Nama',
             onPressed: () => _promptSetName(edit: true),
+          ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'clear') _clearLocal();
+            },
+            itemBuilder: (ctx) => [
+              const PopupMenuItem(
+                value: 'clear',
+                child: Row(
+                  children: [
+                    Icon(Icons.cleaning_services_outlined, size: 20),
+                    SizedBox(width: 12),
+                    Text('Bersihkan Chat'),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
