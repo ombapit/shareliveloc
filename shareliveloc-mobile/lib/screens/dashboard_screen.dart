@@ -5,6 +5,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/group.dart';
 import '../models/share.dart';
 import '../services/api_service.dart';
@@ -209,11 +210,78 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         : null,
                   ),
                 ),
+                if (share.trakteerId.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  _buildTrakteerCard(share.trakteerId),
+                ],
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildTrakteerCard(String trakteerId) {
+    final url = 'https://trakteer.id/$trakteerId';
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFFFF3E0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.shade300),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              const Icon(
+                Icons.favorite,
+                color: Colors.orange,
+                size: 28,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Dukung via Trakteer',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'trakteer.id/$trakteerId',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange.shade900,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.open_in_new,
+                size: 18,
+                color: Colors.orange.shade900,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -341,6 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         final name = msg['name'] as String;
         final icon = msg['icon'] as String;
         final durationHours = (msg['duration_hours'] as int?) ?? 0;
+        final trakteerId = (msg['trakteer_id'] as String?) ?? '';
         DateTime? expiresAt;
         final expStr = msg['expires_at'];
         if (expStr is String && expStr.isNotEmpty) {
@@ -357,6 +426,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           longitude: lng,
           durationHours: durationHours,
           expiresAt: expiresAt,
+          trakteerId: trakteerId,
           isActive: true,
         );
         if (idx >= 0) {

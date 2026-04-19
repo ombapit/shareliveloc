@@ -13,6 +13,7 @@ class ShareScreen extends StatefulWidget {
 
 class _ShareScreenState extends State<ShareScreen> {
   final _nameController = TextEditingController();
+  final _trakteerController = TextEditingController();
   String _selectedIcon = 'bus';
   int _selectedDuration = 1; // 0 = manual
   String _groupName = '';
@@ -60,6 +61,7 @@ class _ShareScreenState extends State<ShareScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _trakteerController.dispose();
     _countdownTimer?.cancel();
     super.dispose();
   }
@@ -146,6 +148,7 @@ class _ShareScreenState extends State<ShareScreen> {
         icon: _selectedIcon,
         groupName: _groupName.trim(),
         durationHours: _selectedDuration,
+        trakteerId: _trakteerController.text.trim(),
       );
 
       if (shareId != null) {
@@ -197,6 +200,7 @@ class _ShareScreenState extends State<ShareScreen> {
       setState(() {
         _isSharing = false;
         _nameController.clear();
+        _trakteerController.clear();
         _groupName = '';
         _groupFieldKey = UniqueKey();
         _selectedIcon = 'bus';
@@ -353,6 +357,17 @@ class _ShareScreenState extends State<ShareScreen> {
             key: _groupFieldKey,
             onSelected: (group) => setState(() => _groupName = group.name),
             onTextChanged: (text) => setState(() => _groupName = text),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _trakteerController,
+            decoration: const InputDecoration(
+              labelText: 'Trakteer ID (opsional)',
+              border: OutlineInputBorder(),
+              hintText: 'username trakteer.id Anda',
+              prefixText: 'trakteer.id/',
+              helperText: 'Untuk menerima dukungan dari pengguna lain',
+            ),
           ),
           const SizedBox(height: 16),
           DropdownButtonFormField<int>(

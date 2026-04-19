@@ -25,6 +25,7 @@ type Share struct {
 	Longitude     float64    `json:"longitude"`
 	DurationHours int        `json:"duration_hours" gorm:"not null;default:0"`
 	ExpiresAt     time.Time  `json:"expires_at"`
+	TrakteerID    string     `json:"trakteer_id" gorm:"default:''"`
 	IsActive      bool       `json:"is_active" gorm:"default:true"`
 	CreatedAt     time.Time  `json:"created_at"`
 	UpdatedAt     time.Time  `json:"updated_at"`

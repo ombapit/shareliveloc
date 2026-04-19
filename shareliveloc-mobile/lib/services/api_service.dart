@@ -29,6 +29,7 @@ class ApiService {
     required String icon,
     required String groupName,
     required int durationHours,
+    String trakteerId = '',
   }) async {
     final response = await http.post(
       Uri.parse('${AppConfig.baseUrl}/api/shares'),
@@ -38,6 +39,7 @@ class ApiService {
         'icon': icon,
         'group_name': groupName,
         'duration_hours': durationHours,
+        'trakteer_id': trakteerId,
       }),
     );
     if (response.statusCode == 201) {

@@ -21,6 +21,7 @@ func CreateShare(c *gin.Context) {
 		Icon          string `json:"icon" binding:"required"`
 		GroupName     string `json:"group_name" binding:"required"`
 		DurationHours int    `json:"duration_hours" binding:"min=0,max=8"`
+		TrakteerID    string `json:"trakteer_id"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -38,10 +39,11 @@ func CreateShare(c *gin.Context) {
 	}
 
 	share := models.Share{
-		Name:     input.Name,
-		Icon:     input.Icon,
-		GroupID:  group.ID,
-		IsActive: true,
+		Name:       input.Name,
+		Icon:       input.Icon,
+		GroupID:    group.ID,
+		TrakteerID: input.TrakteerID,
+		IsActive:   true,
 	}
 	if input.DurationHours > 0 {
 		share.DurationHours = input.DurationHours
@@ -58,6 +60,7 @@ func CreateShare(c *gin.Context) {
 		Longitude:     share.Longitude,
 		DurationHours: share.DurationHours,
 		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
+		TrakteerID:    share.TrakteerID,
 		IsActive:      true,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
@@ -117,6 +120,7 @@ func UpdateLocation(c *gin.Context) {
 		Longitude:     input.Longitude,
 		DurationHours: share.DurationHours,
 		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
+		TrakteerID:    share.TrakteerID,
 		IsActive:      true,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})
@@ -142,6 +146,7 @@ func StopShare(c *gin.Context) {
 		Longitude:     share.Longitude,
 		DurationHours: share.DurationHours,
 		ExpiresAt:     formatExpiresAt(share.ExpiresAt),
+		TrakteerID:    share.TrakteerID,
 		IsActive:      false,
 		UpdatedAt:     time.Now().Format(time.RFC3339),
 	})

@@ -7,6 +7,7 @@ class ShareLocation {
   final double longitude;
   final int durationHours;
   final DateTime? expiresAt;
+  final String trakteerId;
   final bool isActive;
 
   ShareLocation({
@@ -18,6 +19,7 @@ class ShareLocation {
     required this.longitude,
     required this.durationHours,
     required this.expiresAt,
+    required this.trakteerId,
     required this.isActive,
   });
 
@@ -27,7 +29,7 @@ class ShareLocation {
     if (expStr is String && expStr.isNotEmpty) {
       expires = DateTime.tryParse(expStr);
       if (expires != null && expires.year < 2000) {
-        expires = null; // Zero-time from Go
+        expires = null;
       }
     }
     return ShareLocation(
@@ -39,6 +41,7 @@ class ShareLocation {
       longitude: (json['longitude'] as num).toDouble(),
       durationHours: (json['duration_hours'] as int?) ?? 0,
       expiresAt: expires,
+      trakteerId: (json['trakteer_id'] as String?) ?? '',
       isActive: json['is_active'] as bool,
     );
   }

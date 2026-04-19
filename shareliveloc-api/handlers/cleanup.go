@@ -54,6 +54,7 @@ func cleanupStaleShares() {
 			Longitude:     share.Longitude,
 			DurationHours: share.DurationHours,
 			ExpiresAt:     formatExpiresAt(share.ExpiresAt),
+			TrakteerID:    share.TrakteerID,
 			IsActive:      false,
 			UpdatedAt:     time.Now().Format(time.RFC3339),
 		})
