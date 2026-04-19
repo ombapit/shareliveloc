@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/api_service.dart';
 import '../services/location_service.dart';
+import '../services/user_service.dart';
 import '../widgets/group_search_field.dart';
 
 class ShareScreen extends StatefulWidget {
@@ -37,7 +38,15 @@ class _ShareScreenState extends State<ShareScreen> {
   @override
   void initState() {
     super.initState();
+    _loadSavedTrakteer();
     _restoreSession();
+  }
+
+  Future<void> _loadSavedTrakteer() async {
+    final saved = await UserService.getTrakteerId();
+    if (saved.isNotEmpty && mounted) {
+      _trakteerController.text = saved;
+    }
   }
 
   Future<void> _restoreSession() async {
@@ -143,12 +152,16 @@ class _ShareScreenState extends State<ShareScreen> {
     setState(() => _isSubmitting = true);
 
     try {
+      final trakteerId = _trakteerController.text.trim();
+      // Persist trakteer id for next time
+      await UserService.setTrakteerId(trakteerId);
+
       final shareId = await ApiService.createShare(
         name: _nameController.text.trim(),
         icon: _selectedIcon,
         groupName: _groupName.trim(),
         durationHours: _selectedDuration,
-        trakteerId: _trakteerController.text.trim(),
+        trakteerId: trakteerId,
       );
 
       if (shareId != null) {
