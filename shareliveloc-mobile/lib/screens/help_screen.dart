@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HelpScreen extends StatelessWidget {
   const HelpScreen({super.key});
@@ -156,8 +157,74 @@ class HelpScreen extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+          const _TrakteerCard(username: 'david_suwandi'),
           const SizedBox(height: 32),
         ],
+      ),
+    );
+  }
+}
+
+class _TrakteerCard extends StatelessWidget {
+  final String username;
+  const _TrakteerCard({required this.username});
+
+  @override
+  Widget build(BuildContext context) {
+    final url = 'https://trakteer.id/$username';
+    return Card(
+      elevation: 0,
+      color: const Color(0xFFFFF3E0),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: Colors.orange.shade300),
+      ),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: () async {
+          final uri = Uri.parse(url);
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              const Icon(Icons.favorite, color: Colors.orange, size: 32),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Dukung Pengembang',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'trakteer.id/$username',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.orange.shade900,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.open_in_new,
+                color: Colors.orange.shade900,
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
