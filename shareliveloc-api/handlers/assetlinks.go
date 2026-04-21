@@ -22,10 +22,11 @@ func AssetLinks(c *gin.Context) {
 	}
 
 	raw := os.Getenv("APP_SHA256_FINGERPRINTS")
-	var fingerprints []string
+	fingerprints := []string{}
 	if raw != "" {
 		for _, f := range strings.Split(raw, ",") {
 			f = strings.TrimSpace(f)
+			f = strings.Trim(f, "\"'")
 			if f != "" {
 				fingerprints = append(fingerprints, f)
 			}
