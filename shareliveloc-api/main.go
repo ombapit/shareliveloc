@@ -42,6 +42,8 @@ func main() {
 	}
 
 	r.GET("/ws/location/:group_id", handlers.HandleWebSocket)
+	r.GET("/open", handlers.OpenGroupLink)
+	r.GET("/.well-known/assetlinks.json", handlers.AssetLinks)
 
 	r.Run(":8080")
 }

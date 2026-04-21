@@ -32,6 +32,23 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+            <!-- Custom scheme deep link: shareliveloc://group/<name> -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="shareliveloc"/>
+            </intent-filter>
+            <!-- HTTPS shareable link: https://apishareliveloc.davidsuwandi.my.id/open?group=... -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data
+                    android:scheme="https"
+                    android:host="apishareliveloc.davidsuwandi.my.id"
+                    android:pathPrefix="/open"/>
+            </intent-filter>
         </activity>
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"

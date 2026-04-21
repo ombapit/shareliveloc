@@ -5,7 +5,9 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/deep_link_service.dart';
 import '../models/group.dart';
 import '../models/share.dart';
 import '../services/api_service.dart';
@@ -30,6 +32,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   bool _isLoading = false;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
   StreamSubscription<Position>? _userLocationSub;
+  StreamSubscription<String>? _deepLinkSub;
   Timer? _labelTimer;
   bool _wasOffline = false;
   LatLng? _userLocation;
@@ -46,6 +49,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadAdConfig();
     _listenConnectivity();
+    _listenDeepLinks();
     // Rebuild every 15s to refresh "X minute remaining" labels
     // and remove expired shares client-side (API cleanup may lag up to 1 min)
     _labelTimer = Timer.periodic(const Duration(seconds: 15), (_) {
@@ -72,10 +76,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     _wsService.disconnect();
     _connectivitySub?.cancel();
     _userLocationSub?.cancel();
+    _deepLinkSub?.cancel();
     _labelTimer?.cancel();
     _mapController.dispose();
     _bannerAd?.dispose();
     super.dispose();
+  }
+
+  void _listenDeepLinks() {
+    // Handle pending group captured before this screen was ready
+    final pending = DeepLinkService.pendingGroup;
+    if (pending != null) {
+      DeepLinkService.consumePendingGroup();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _selectGroupByName(pending);
+      });
+    }
+    _deepLinkSub = DeepLinkService.onGroup.listen((name) {
+      _selectGroupByName(name);
+    });
+  }
+
+  Future<void> _selectGroupByName(String name) async {
+    try {
+      final groups = await ApiService.getGroups(search: name);
+      final match = groups.firstWhere(
+        (g) => g.name.toLowerCase() == name.toLowerCase(),
+        orElse: () => Group(id: -1, name: ''),
+      );
+      if (match.id <= 0) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Grup "$name" tidak ditemukan')),
+          );
+        }
+        return;
+      }
+      _onGroupSelected(match);
+    } catch (_) {}
+  }
+
+  void _shareGroupLink() {
+    if (_selectedGroup == null) return;
+    final link = DeepLinkService.buildGroupLink(_selectedGroup!.name);
+    Share.share(
+      'Bergabung ke grup "${_selectedGroup!.name}" di ShareLiveLoc:\n$link',
+      subject: 'ShareLiveLoc - Grup ${_selectedGroup!.name}',
+    );
   }
 
   Future<void> _toggleGps() async {
@@ -523,6 +570,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ),
                       );
                     },
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.share_outlined),
+                    tooltip: 'Bagikan Link Grup',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: _shareGroupLink,
                   ),
                   Text('${_shares.length} aktif'),
                 ],
