@@ -29,9 +29,10 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
   /// Currently displayed (possibly animated) position per share id.
   final Map<int, LatLng> _displayed = {};
   final Map<int, AnimationController> _controllers = {};
-  // Bearing in radians (0 = north, π/2 = east). Animated toward target bearing.
+  // Bearing in radians (0 = north, π/2 = east). Only updated on meaningful
+  // movement - stays put when marker is stationary so the icon doesn't
+  // snap back to a default orientation.
   final Map<int, double> _bearing = {};
-  final Map<int, double> _targetBearing = {};
 
   static const _animDuration = Duration(milliseconds: 500);
   // Minimum distance (meters) before updating bearing. Filters GPS noise.
@@ -62,7 +63,6 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
         _controllers.remove(id);
         _displayed.remove(id);
         _bearing.remove(id);
-        _targetBearing.remove(id);
       }
     }
 
@@ -81,13 +81,16 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
         continue;
       }
 
-      // Update bearing only if meaningful movement
       final dist = _distanceMeters(prev, target);
+
+      // Compute new bearing only for meaningful movement; otherwise keep
+      // the existing bearing (pass null to _animateTo).
+      double? newBearing;
       if (dist >= _minDistanceForBearing) {
-        _targetBearing[s.id] = _calcBearing(prev, target);
+        newBearing = _calcBearing(prev, target);
       }
 
-      _animateTo(s.id, prev, target);
+      _animateTo(s.id, prev, target, newBearing);
     }
   }
 
@@ -126,12 +129,20 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
     return a + diff * t;
   }
 
-  void _animateTo(int shareId, LatLng from, LatLng to) {
+  void _animateTo(int shareId, LatLng from, LatLng to, double? newBearing) {
     _controllers[shareId]?.stop();
     _controllers[shareId]?.dispose();
 
-    final bearingStart = _bearing[shareId] ?? _targetBearing[shareId] ?? 0.0;
-    final bearingEnd = _targetBearing[shareId] ?? bearingStart;
+    final oldBearing = _bearing[shareId];
+    // If we have a new bearing and an old one, interpolate between them.
+    // If we have new but no old, snap immediately (no animation).
+    // If no new bearing, don't touch bearing during animation.
+    final shouldAnimateBearing =
+        newBearing != null && oldBearing != null && newBearing != oldBearing;
+
+    if (newBearing != null && oldBearing == null) {
+      _bearing[shareId] = newBearing;
+    }
 
     final controller = AnimationController(
       vsync: this,
@@ -143,11 +154,12 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
       final t = Curves.easeInOut.transform(controller.value);
       final lat = from.latitude + (to.latitude - from.latitude) * t;
       final lng = from.longitude + (to.longitude - from.longitude) * t;
-      final br = _lerpBearing(bearingStart, bearingEnd, t);
       if (mounted) {
         setState(() {
           _displayed[shareId] = LatLng(lat, lng);
-          _bearing[shareId] = br;
+          if (shouldAnimateBearing) {
+            _bearing[shareId] = _lerpBearing(oldBearing, newBearing, t);
+          }
         });
       }
     });
@@ -156,7 +168,9 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
       if (mounted) {
         setState(() {
           _displayed[shareId] = to;
-          _bearing[shareId] = bearingEnd;
+          if (newBearing != null) {
+            _bearing[shareId] = newBearing;
+          }
         });
       }
     });
@@ -185,15 +199,16 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
     }
   }
 
-  /// Transport/person emojis face LEFT by default in most fonts.
-  /// Rotation angle (radians, clockwise) to align with bearing.
-  /// - bearing 0 (north) → rotate +π/2 (icon points up)
-  /// - bearing π/2 (east) → rotate +π (icon points right)
-  double _rotationForIcon(String icon, int shareId) {
-    if (icon == 'other') return 0.0;
+  /// Emojis default to facing LEFT. When the marker is heading in the
+  /// eastern hemisphere (bearing between 0 and π, i.e., any eastward
+  /// component), flip horizontally so the icon faces right. This keeps
+  /// the icon upright (never upside-down) while still indicating
+  /// direction of travel.
+  bool _shouldFlipIcon(String icon, int shareId) {
+    if (icon == 'other') return false;
     final b = _bearing[shareId];
-    if (b == null) return 0.0;
-    return b + math.pi / 2;
+    if (b == null) return false;
+    return b > 0 && b < math.pi;
   }
 
   String? _remainingFor(ShareLocation s) {
@@ -243,7 +258,7 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
             final remaining = _remainingFor(s);
             final isFollowed = widget.followedShareId == s.id;
             final pos = _displayed[s.id]!;
-            final rotation = _rotationForIcon(s.icon, s.id);
+            final flip = _shouldFlipIcon(s.icon, s.id);
             return Marker(
               point: pos,
               width: 120,
@@ -253,8 +268,11 @@ class _MapWidgetState extends State<MapWidget> with TickerProviderStateMixin {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Transform.rotate(
-                      angle: rotation,
+                    Transform(
+                      alignment: Alignment.center,
+                      transform: flip
+                          ? Matrix4.diagonal3Values(-1.0, 1.0, 1.0)
+                          : Matrix4.identity(),
                       child: Text(
                         _iconForType(s.icon),
                         style: const TextStyle(fontSize: 28),
