@@ -139,6 +139,21 @@ class ApiService {
     return null;
   }
 
+  static Future<Map<int, int>> getGroupFollowerCounts(int groupId) async {
+    try {
+      final response = await http.get(
+        Uri.parse('${AppConfig.baseUrl}/api/groups/$groupId/followers'),
+      );
+      if (response.statusCode == 200) {
+        final body = jsonDecode(response.body);
+        final data = body['data'] as Map<String, dynamic>;
+        return data.map(
+            (k, v) => MapEntry(int.parse(k), (v as num).toInt()));
+      }
+    } catch (_) {}
+    return {};
+  }
+
   static Future<Map<String, String>> getConfigs() async {
     try {
       final response = await http.get(

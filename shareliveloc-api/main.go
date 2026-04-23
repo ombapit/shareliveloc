@@ -33,6 +33,7 @@ func main() {
 		api.PUT("/shares/:id/stop", handlers.StopShare)
 		api.GET("/shares", handlers.GetShares)
 		api.GET("/shares/:id", handlers.GetShare)
+		api.GET("/groups/:id/followers", handlers.GetGroupFollowerCounts)
 
 		api.GET("/config", handlers.GetConfigs)
 		api.GET("/config/:key", handlers.GetConfig)

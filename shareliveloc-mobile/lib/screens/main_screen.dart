@@ -21,34 +21,41 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+    // Fullscreen map in landscape: hide bottom nav when on Dashboard tab
+    final hideBottomNav = isLandscape && _currentIndex == 0;
+
     return Scaffold(
       body: IndexedStack(
         index: _currentIndex,
         children: _screens,
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) {
-          setState(() => _currentIndex = index);
-        },
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.map_outlined),
-            selectedIcon: Icon(Icons.map),
-            label: 'Dashboard',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.share_location_outlined),
-            selectedIcon: Icon(Icons.share_location),
-            label: 'Share',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.help_outline),
-            selectedIcon: Icon(Icons.help),
-            label: 'Bantuan',
-          ),
-        ],
-      ),
+      bottomNavigationBar: hideBottomNav
+          ? null
+          : NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (index) {
+                setState(() => _currentIndex = index);
+              },
+              destinations: const [
+                NavigationDestination(
+                  icon: Icon(Icons.map_outlined),
+                  selectedIcon: Icon(Icons.map),
+                  label: 'Dashboard',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.share_location_outlined),
+                  selectedIcon: Icon(Icons.share_location),
+                  label: 'Share',
+                ),
+                NavigationDestination(
+                  icon: Icon(Icons.help_outline),
+                  selectedIcon: Icon(Icons.help),
+                  label: 'Bantuan',
+                ),
+              ],
+            ),
     );
   }
 }

@@ -38,6 +38,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
   LatLng? _userLocation;
   bool _gpsActive = false;
   int? _followedShareId;
+  int _groupUserCount = 0;
+  final Map<int, int> _followerCounts = {};
+  // Set while marker popup bottom sheet is open; invoked so that
+  // follower_count WS broadcasts trigger sheet rebuild.
+  void Function(void Function())? _activePopupRebuild;
 
   // Ads
   BannerAd? _bannerAd;
@@ -193,80 +198,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showMarkerPopup(ShareLocation share) {
-    final isFollowing = _followedShareId == share.id;
     showModalBottomSheet(
       context: context,
       builder: (ctx) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Row(
+        return StatefulBuilder(
+          builder: (ctx, sheetSetState) {
+            // Register rebuild callback so follower_count WS broadcasts
+            // trigger sheet rebuild while it's open.
+            _activePopupRebuild = sheetSetState;
+            final isFollowing = _followedShareId == share.id;
+            final followerCount = _followerCounts[share.id] ?? 0;
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text(
-                      _emojiFor(share.icon),
-                      style: const TextStyle(fontSize: 32),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            share.name,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          if (share.expiresAt != null)
-                            Text(
-                              _remainingText(share.expiresAt!),
-                              style: TextStyle(
-                                color: Colors.grey.shade600,
-                                fontSize: 13,
+                    Row(
+                      children: [
+                        Text(
+                          _emojiFor(share.icon),
+                          style: const TextStyle(fontSize: 32),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                share.name,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
-                            ),
-                        ],
+                              if (share.expiresAt != null)
+                                Text(
+                                  _remainingText(share.expiresAt!),
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              Padding(
+                                padding: const EdgeInsets.only(top: 2),
+                                child: Row(
+                                  children: [
+                                    Icon(Icons.people_outline,
+                                        size: 14,
+                                        color: Colors.grey.shade600),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$followerCount pengikut',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey.shade600,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      height: 48,
+                      child: FilledButton.icon(
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _toggleFollow(share);
+                        },
+                        icon: Icon(isFollowing
+                            ? Icons.location_off
+                            : Icons.navigation),
+                        label: Text(
+                          isFollowing ? 'Berhenti Ikuti' : 'Ikuti',
+                          style: const TextStyle(fontSize: 16),
+                        ),
+                        style: isFollowing
+                            ? FilledButton.styleFrom(
+                                backgroundColor: Colors.red,
+                              )
+                            : null,
                       ),
                     ),
+                    if (share.trakteerId.isNotEmpty) ...[
+                      const SizedBox(height: 12),
+                      _buildTrakteerCard(share.trakteerId),
+                    ],
                   ],
                 ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  height: 48,
-                  child: FilledButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _toggleFollow(share);
-                    },
-                    icon: Icon(isFollowing
-                        ? Icons.location_off
-                        : Icons.navigation),
-                    label: Text(
-                      isFollowing ? 'Berhenti Ikuti' : 'Ikuti',
-                      style: const TextStyle(fontSize: 16),
-                    ),
-                    style: isFollowing
-                        ? FilledButton.styleFrom(
-                            backgroundColor: Colors.red,
-                          )
-                        : null,
-                  ),
-                ),
-                if (share.trakteerId.isNotEmpty) ...[
-                  const SizedBox(height: 12),
-                  _buildTrakteerCard(share.trakteerId),
-                ],
-              ],
-            ),
-          ),
+              ),
+            );
+          },
         );
       },
-    );
+    ).whenComplete(() => _activePopupRebuild = null);
   }
 
   Widget _buildTrakteerCard(String trakteerId) {
@@ -334,9 +365,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _toggleFollow(ShareLocation share) {
     if (_followedShareId == share.id) {
+      _wsService.send({'type': 'unfollow', 'share_id': share.id});
       setState(() => _followedShareId = null);
       _fitBounds();
     } else {
+      // Unfollow previous one if any
+      if (_followedShareId != null) {
+        _wsService.send({'type': 'unfollow', 'share_id': _followedShareId});
+      }
+      _wsService.send({'type': 'follow', 'share_id': share.id});
       setState(() => _followedShareId = share.id);
       _mapController.rotate(0);
       _mapController.move(
@@ -410,10 +447,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
     setState(() {
       _selectedGroup = group;
       _isLoading = true;
+      _groupUserCount = 0;
+      _followedShareId = null;
+      _followerCounts.clear();
     });
     _loadShares(group.id);
+    _loadFollowerCounts(group.id);
     _wsService.connect(group.id);
     _wsService.onMessage = _onWsMessage;
+  }
+
+  Future<void> _loadFollowerCounts(int groupId) async {
+    final counts = await ApiService.getGroupFollowerCounts(groupId);
+    if (mounted) {
+      setState(() {
+        _followerCounts
+          ..clear()
+          ..addAll(counts);
+      });
+    }
   }
 
   Future<void> _loadShares(int groupId) async {
@@ -437,8 +489,29 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onWsMessage(Map<String, dynamic> msg) {
+    final type = msg['type'];
+
+    // Presence: number of connected clients in the group
+    if (type == 'presence') {
+      final count = (msg['count'] as int?) ?? 0;
+      if (mounted) setState(() => _groupUserCount = count);
+      return;
+    }
+
+    // Follower count for a specific share
+    if (type == 'follower_count') {
+      final shareId = msg['share_id'] as int;
+      final count = (msg['count'] as int?) ?? 0;
+      if (mounted) {
+        setState(() => _followerCounts[shareId] = count);
+        // If the popup is currently open, trigger its rebuild too
+        _activePopupRebuild?.call(() {});
+      }
+      return;
+    }
+
     // Dashboard only handles location broadcasts; chat handled by ChatScreen
-    if (msg['type'] != null && msg['type'] != 'location') return;
+    if (type != null && type != 'location') return;
     final shareId = msg['share_id'] as int;
     final isActive = msg['is_active'] as bool;
 
@@ -532,56 +605,77 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Share Live Location')),
+      appBar: isLandscape
+          ? null
+          : AppBar(title: const Text('Share Live Location')),
       body: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: GroupSearchField(
-              onSelected: _onGroupSelected,
-              activeOnly: true,
-            ),
-          ),
-          if (_selectedGroup != null)
+          if (!isLandscape) ...[
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              child: Row(
-                children: [
-                  const Icon(Icons.group, size: 18),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      'Grup: ${_selectedGroup!.name}',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.chat_bubble_outline),
-                    tooltip: 'Chat Grup',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              ChatScreen(group: _selectedGroup!),
-                        ),
-                      );
-                    },
-                  ),
-                  IconButton(
-                    icon: const Icon(Icons.share_outlined),
-                    tooltip: 'Bagikan Link Grup',
-                    visualDensity: VisualDensity.compact,
-                    onPressed: _shareGroupLink,
-                  ),
-                  Text('${_shares.length} aktif'),
-                ],
+              padding: const EdgeInsets.all(12),
+              child: GroupSearchField(
+                onSelected: _onGroupSelected,
+                activeOnly: true,
               ),
             ),
-          const SizedBox(height: 8),
+            if (_selectedGroup != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.group, size: 18),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Grup: ${_selectedGroup!.name}',
+                            style:
+                                const TextStyle(fontWeight: FontWeight.bold),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (_groupUserCount > 0)
+                            Text(
+                              '$_groupUserCount user aktif',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.chat_bubble_outline),
+                      tooltip: 'Chat Grup',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) =>
+                                ChatScreen(group: _selectedGroup!),
+                          ),
+                        );
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.share_outlined),
+                      tooltip: 'Bagikan Link Grup',
+                      visualDensity: VisualDensity.compact,
+                      onPressed: _shareGroupLink,
+                    ),
+                    Text('${_shares.length} share'),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
           Expanded(
             child: Stack(
               children: [

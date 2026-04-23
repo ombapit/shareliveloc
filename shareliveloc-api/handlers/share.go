@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"shareliveloc-api/models"
 	"time"
@@ -152,6 +153,25 @@ func StopShare(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{"data": "sharing stopped"})
+}
+
+func GetGroupFollowerCounts(c *gin.Context) {
+	groupID := c.Param("id")
+	var shares []models.Share
+	models.DB.Select("id").
+		Where("group_id = ? AND is_active = ?", groupID, true).
+		Find(&shares)
+	ids := make([]uint, len(shares))
+	for i, s := range shares {
+		ids[i] = s.ID
+	}
+	counts := WsHub.FollowerCountsFor(ids)
+	// Convert to string keys for JSON
+	result := make(map[string]int, len(counts))
+	for k, v := range counts {
+		result[fmt.Sprintf("%d", k)] = v
+	}
+	c.JSON(http.StatusOK, gin.H{"data": result})
 }
 
 func GetShare(c *gin.Context) {
