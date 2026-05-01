@@ -43,12 +43,12 @@ func GetGroups(c *gin.Context) {
 
 	if totalCount <= 5 {
 		baseQuery.Order("name asc").Find(&groups)
-	} else {
-		if len(search) < 3 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "search requires at least 3 characters"})
-			return
-		}
+	} else if len(search) >= 3 {
 		baseQuery.Where("name ILIKE ?", "%"+search+"%").Order("name asc").Find(&groups)
+	} else {
+		// Total > 5 with no search: return 5 most recently created groups
+		// so the dropdown still shows something on tap.
+		baseQuery.Order("created_at desc").Limit(5).Find(&groups)
 	}
 
 	c.JSON(http.StatusOK, gin.H{"data": groups, "total": totalCount})
